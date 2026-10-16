@@ -24,9 +24,8 @@ dashboard's **Docs**. Want Claude to install it for you? Add the
 npm install @x3growth/sdk
 ```
 
-Until the first registry release, every X3 API deployment serves the same package as a tarball:
-`npm install https://api.x3growth.io/v1/sdk/x3growth-sdk-<version>.tgz`. The script-tag build needs no
-install at all (below).
+Other package managers: `pnpm add @x3growth/sdk`, `yarn add @x3growth/sdk`, `bun add @x3growth/sdk`.
+The script-tag build needs no install at all (below).
 
 ## Script tag
 

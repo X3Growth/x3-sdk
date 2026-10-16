@@ -163,9 +163,9 @@ console.log(`staged ${pkg.name}@${pkg.version} in ${out}`);
 
 /* ---------------------------------------------------------------- tarball */
 
-// Until the package is on the npm registry, each API deployment serves this tarball at
-// GET /v1/sdk/<file> (apps/api/scripts/build.ts copies it next to the IIFE files) and the
-// install recipes run `npm install <api origin>/v1/sdk/x3growth-sdk-<version>.tgz`.
+// Each API deployment also serves this tarball at GET /v1/sdk/<file> (apps/api/scripts/build.ts
+// copies it next to the IIFE files) – for self-hosters and installs made before the npm release
+// (the install recipes use `npm install @x3growth/sdk` from the registry).
 const TARBALL = `x3growth-sdk-${pkg.version}.tgz`;
 mkdirSync(`${root}dist/pkg`, { recursive: true });
 rmSync(`${root}dist/pkg/${TARBALL}`, { force: true });

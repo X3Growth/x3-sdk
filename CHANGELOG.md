@@ -5,12 +5,11 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
-- Published under the npm name `@x3growth/sdk` (previously only distributed as the tarball
-  `3x-engine-sdk-<version>.tgz` by each X3 API deployment; that URL keeps working).
-- License: MIT.
-
 ## [0.1.0] – 2026-10-16
+
+First release on the npm registry as `@x3growth/sdk` (MIT). Before, the package was only distributed as the
+tarball `3x-engine-sdk-<version>.tgz` / `x3growth-sdk-<version>.tgz` by each X3 API deployment; that URL keeps
+working.
 
 ### Added
 - Browser tracker (ESM and script tag): cookieless pageviews, engagement, clicks (CTA, WhatsApp and
