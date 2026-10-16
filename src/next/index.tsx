@@ -1,6 +1,10 @@
 /**
  * @x3growth/sdk/next – Next.js App Router adapter. Server-component safe (no
- * hooks, no "use client"): renders next/script with strategy afterInteractive.
+ * hooks, no "use client"). An inline script in the server-rendered HTML starts
+ * the SDK script right away, so the first pageview does not wait for hydration
+ * (a visitor who leaves before hydration finished was not counted); the same
+ * script through next/script (afterInteractive) is the fallback when a CSP
+ * blocks the inline part (the SDK ignores a second load).
  *
  *   // app/layout.tsx
  *   import { X3Analytics, fetchClientConfig } from "@x3growth/sdk/next";
@@ -31,6 +35,11 @@ export type X3AnalyticsProps = {
   debug?: boolean;
   /** hash routers */
   hashRouting?: boolean;
+  /**
+   * "early" (default): an inline script starts the SDK before hydration, next/script is the fallback;
+   * "afterInteractive": only next/script (e.g. a CSP without nonce for inline scripts)
+   */
+  strategy?: "early" | "afterInteractive";
 };
 
 /** JSON for an inline <script>: "<" escaped so the payload cannot close the tag */
@@ -38,7 +47,15 @@ export function inlineJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }
 
-export function X3Analytics({ publishableKey, host = "/n3", config, nonce, build = "full", consent, debug, hashRouting }: X3AnalyticsProps) {
+/**
+ * Inline loader: appends the async SDK script while the HTML is parsed (not after hydration).
+ * document.currentScript.nonce carries the nonce over; boot() reads the data-* attributes.
+ */
+export function earlyLoader(src: string, data: Record<string, string>): string {
+  return `(function(d){var c=d.currentScript,s=d.createElement("script");s.async=true;s.src=${inlineJson(src)};var a=${inlineJson(data)};for(var k in a)s.setAttribute(k,a[k]);if(c&&c.nonce)s.nonce=c.nonce;(d.head||d.documentElement).appendChild(s)})(document);`;
+}
+
+export function X3Analytics({ publishableKey, host = "/n3", config, nonce, build = "full", consent, debug, hashRouting, strategy = "early" }: X3AnalyticsProps) {
   const base = host.replace(/\/+$/, "");
   const file = build === "core" ? "x3.js" : "x3.full.js";
   const inline = `${QUEUE_STUB}${config ? `window.__x3cfg=${inlineJson(config)};` : ""}`;
@@ -49,6 +66,7 @@ export function X3Analytics({ publishableKey, host = "/n3", config, nonce, build
   if (hashRouting) data["data-hash-routing"] = "";
   return (
     <>
+      {strategy === "early" && <script id="x3-early" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: `${inline}${earlyLoader(src, data)}` }} />}
       <Script id="x3-init" strategy="afterInteractive" nonce={nonce} dangerouslySetInnerHTML={{ __html: inline }} />
       <Script id="x3" strategy="afterInteractive" src={src} nonce={nonce} {...data} />
     </>

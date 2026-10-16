@@ -92,7 +92,7 @@ const TIMING = {
   /** parity */
   flushDebounceMs: 1e4,
   /** parity */
-  firstFlushDelayMs: 5e3,
+  firstFlushDelayMs: 1e3,
   /** parity */
   resumeAfterHiddenMs: 30 * 6e4,
   /** parity */

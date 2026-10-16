@@ -1102,6 +1102,17 @@ export function createTracker(env: TrackerEnv): Tracker {
       guard(() => applyConfig(defaultConfig())),
       CONFIG_WAIT_MS,
     );
+    // Leaving (or hiding) the page before the config arrived: start with the defaults right away – what
+    // the timer above would do later – so the first pageview and queued calls go out with the unload
+    // flush instead of being lost. Listeners added by applyConfig() do not see the event being dispatched.
+    const leaving = (event: Event) => {
+      if (cfg || (event.type === "visibilitychange" && document.visibilityState !== "hidden")) return;
+      applyConfig(defaultConfig());
+      if (event.type === "pagehide") onPageHide();
+      else onVisibility();
+    };
+    listen(window, "pagehide", leaving);
+    listen(document, "visibilitychange", leaving);
     try {
       fetch(`${host}/v1/c/${key}`, { credentials: "omit" })
         .then((response) => (response.ok ? (response.json() as Promise<ClientConfig>) : null))

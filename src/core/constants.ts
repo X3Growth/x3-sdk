@@ -6,7 +6,7 @@
 export const SESSION_TIMEOUT_MS = 30 * 60_000;
 export const HEARTBEAT_MS = 120_000;
 export const FLUSH_DEBOUNCE_MS = 10_000;
-export const FIRST_FLUSH_DELAY_MS = 5_000;
+export const FIRST_FLUSH_DELAY_MS = 1_000;
 export const RESUME_AFTER_HIDDEN_MS = 30 * 60_000;
 export const IDLE_AFTER_MS = 30_000;
 export const TICK_MS = 1_000;
