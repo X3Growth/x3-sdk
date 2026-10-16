@@ -12,6 +12,9 @@
  */
 import { validFbCookie, type ConversionSource } from "../_core/index.js";
 
+/** re-exported so declaration files of consumers can name it (TS2742) */
+export type { ConversionSource };
+
 type Scalar = string | number | boolean;
 
 /** Request context of the visitor (transient match keys for ad-platform conversions) */
