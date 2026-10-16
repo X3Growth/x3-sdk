@@ -1,0 +1,31 @@
+name: publish
+
+# Publishes @x3growth/sdk to npm with provenance when a version tag (v1.2.3) is pushed.
+# Needs the repository secret NPM_TOKEN (granular automation token of the npm org x3growth).
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - name: Tag matches package version
+        run: test "v$(node -p 'require("./package.json").version')" = "$GITHUB_REF_NAME"
+      - run: npm run pack
+      - run: npm run smoke
+      - run: npm publish ./.publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

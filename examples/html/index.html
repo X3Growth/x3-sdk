@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>X3 – script tag example</title>
+    <!-- 1. Queue stub + tracker (all plugins). Calls made before the script loads are queued. -->
+    <script>window.x3=window.x3||function(){(window.x3q=window.x3q||[]).push(arguments)}</script>
+    <script async src="https://api.x3growth.io/v1/s/x3.full.js?k=pk_3x_YOUR_PUBLISHABLE_KEY" data-key="pk_3x_YOUR_PUBLISHABLE_KEY"></script>
+  </head>
+  <body>
+    <!-- 2. Declarative events: no JavaScript needed -->
+    <a href="/pricing" data-x3-event="pricing_click" data-x3-prop-position="hero">Pricing</a>
+    <a href="/contact" data-x3-cta>Talk to us</a>
+    <a href="https://wa.me/491701234567">WhatsApp</a> <!-- tracked automatically -->
+
+    <!-- 3. A custom cookie banner reports its decision (supported CMPs need no code, see /docs/sdk/consent) -->
+    <button onclick="x3('consent', 'granted')">Accept</button>
+    <button onclick="x3('consent', 'denied')">Decline</button>
+
+    <!-- 4. Custom event and goal from your own code -->
+    <script>
+      document.querySelector("form")?.addEventListener("submit", function () {
+        x3("goal", "contact_submitted");
+      });
+    </script>
+  </body>
+</html>
