@@ -5,6 +5,20 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] – 2026-10-17
+
+### Fixed
+- A pageview that leaves with the leave-page beacon (0.1.1: page left before the config arrived) is dated
+  from the navigation start instead of the moment of leaving, so it is the entry of the session and sorts
+  before the next page.
+- `x3.consent("granted")` called before the config arrived could override Global Privacy Control; GPC now
+  always wins once the config is applied.
+
+### Server (X3 API, no SDK change needed)
+- Page A's leave beacon and page B's first send of one visitor arriving at the same time could each open a
+  session (cookieless visitors are linked by the daily visitor hash); the ingest now serializes the hash
+  lookup per visitor, so A and B are one session.
+
 ## [0.1.1] – 2026-10-16
 
 ### Fixed

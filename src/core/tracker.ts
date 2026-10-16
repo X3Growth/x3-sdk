@@ -1077,7 +1077,11 @@ export function createTracker(env: TrackerEnv): Tracker {
 
     // consent: GPC is a denial; then explicit init option, the banner's storage key, CMP adapters later
     const gpc = next.consent.respectGlobalPrivacyControl && (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
-    if (gpc) consentLocked = true;
+    if (gpc) {
+      consentLocked = true;
+      // x3.consent("granted") before the config arrived does not override GPC
+      consent = false;
+    }
     const initial = options?.consent && options.consent !== "pending" ? options.consent : readConsentKey();
     if (initial !== "pending") setConsent(initial);
 
@@ -1108,6 +1112,9 @@ export function createTracker(env: TrackerEnv): Tracker {
     const leaving = (event: Event) => {
       if (cfg || (event.type === "visibilitychange" && document.visibilityState !== "hidden")) return;
       applyConfig(defaultConfig());
+      // the page was shown since the navigation started, not since now: the server dates the pageview (and
+      // orders it before the next page's) by its age
+      if (current && current.seq === 0) current.t0 = Math.min(current.t0, Date.now() - Math.max(0, performance.now()));
       if (event.type === "pagehide") onPageHide();
       else onVisibility();
     };
