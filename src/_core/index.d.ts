@@ -88,6 +88,30 @@ declare function compileMatchers(rules: readonly PathRule[]): Matcher;
  */
 declare function compileHostMatcher(patterns: readonly string[]): Matcher;
 
+/** How a not-found page was recognized (event not_found.via) */
+declare const NOT_FOUND_VIA: readonly ["marker", "meta", "title"];
+type NotFoundVia = (typeof NOT_FOUND_VIA)[number];
+/** `<meta name="x3-status" content="404">` – status hint a site (or its framework) can render */
+declare const NOT_FOUND_META_NAME = "x3-status";
+/**
+ * Per-project auto-capture switches (TrackingConfig.autoCapture, sent to the SDK in ClientConfig).
+ * outboundLinks: clicks on links to other hosts (click kind external) ·
+ * fileDownloads: clicks on file links (click kind download; extensions in TrackingConfig.downloads) ·
+ * notFound: 404 pages – the marker attribute (TrackingConfig.notFound) always counts; `meta` adds the
+ * `<meta name="x3-status" content="404">` hint, `titlePattern` (safe regex, case-insensitive) the
+ * document title rule. Consent modes (§17.1, BUILD-ADDENDA P) apply unchanged: these signals are
+ * clicks/pageview facts the SDK already reads – no new device access.
+ */
+type AutoCaptureConfig = {
+    outboundLinks: boolean;
+    fileDownloads: boolean;
+    notFound: {
+        enabled: boolean;
+        meta: boolean;
+        titlePattern: string | null;
+    };
+};
+
 type _JSONSchema = boolean | JSONSchema;
 type SchemaType = "object" | "array" | "string" | "number" | "boolean" | "null" | "integer";
 type JSONSchema = {
@@ -2563,14 +2587,23 @@ declare const TrackingConfigSchema: ZodObject<{
         visitorId: ZodBoolean;
         clickIds: ZodBoolean;
         adCookies: ZodEnum<{
+            off: "off";
             auto: "auto";
             always: "always";
-            off: "off";
         }>;
     }, $strict>>;
     events: ZodObject<{
         allowUnregistered: ZodBoolean;
     }, $strict>;
+    autoCapture: ZodOptional<ZodObject<{
+        outboundLinks: ZodBoolean;
+        fileDownloads: ZodBoolean;
+        notFound: ZodObject<{
+            enabled: ZodBoolean;
+            meta: ZodBoolean;
+            titlePattern: ZodNullable<ZodString>;
+        }, $strict>;
+    }, $strict>>;
     questionnaires: ZodObject<{
         strict: ZodBoolean;
     }, $strict>;
@@ -2635,6 +2668,8 @@ type ClientConfig = {
      * Absent in configs of older APIs → nothing is created.
      */
     journeys?: ClientJourneys;
+    /** auto-capture switches (BUILD-ADDENDA T5); absent in configs of older APIs → DEFAULT_AUTO_CAPTURE */
+    autoCapture?: AutoCaptureConfig;
 };
 type ClientJourneys = {
     visitorId: boolean;
@@ -2919,5 +2954,5 @@ declare function validFbCookie(value: unknown, kind: "fbc" | "fbp" | "ttp"): str
 declare const CONVERSION_SOURCES: readonly ["quiz", "booking", "whatsapp_manual", "manual", "event", "goal", "lead", "api"];
 type ConversionSource = (typeof CONVERSION_SOURCES)[number];
 
-export { CLICK_ID_KEYS, EVENT_NAME_PATTERN, ID_PATTERN, IMMEDIATE_CLICK_KINDS, KEY_PATTERN, LANG_PATTERN, MESSAGING_APPS, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, attributionFromParams, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, compileHostMatcher, compileMatcher, compileMatchers, hashIdentifiers, isSafeRegex, normalizeHost, normalizeVideoId, notFoundPage, slugify, storageKeys, trimProps, validFbCookie };
-export type { Attribution, AttributionOrigin, BookingAdapter, ClickKind, ClientConfig, ClientJourneys, CompiledTrackingConfig, ConversionSource, NavType, PropValue, Props, ScrollMarks, TrackingConfig, VideoFormat, WireAdCookies, WireClickIds, WireEvent, WireIdentify, WirePageview, WireSection, WireVideo };
+export { CLICK_ID_KEYS, EVENT_NAME_PATTERN, ID_PATTERN, IMMEDIATE_CLICK_KINDS, KEY_PATTERN, LANG_PATTERN, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, attributionFromParams, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, compileHostMatcher, compileMatcher, compileMatchers, hashIdentifiers, isSafeRegex, normalizeHost, normalizeVideoId, notFoundPage, slugify, storageKeys, trimProps, validFbCookie };
+export type { Attribution, AttributionOrigin, BookingAdapter, ClickKind, ClientConfig, ClientJourneys, CompiledTrackingConfig, ConversionSource, NavType, NotFoundVia, PropValue, Props, ScrollMarks, TrackingConfig, VideoFormat, WireAdCookies, WireClickIds, WireEvent, WireIdentify, WirePageview, WireSection, WireVideo };

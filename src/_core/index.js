@@ -3,6 +3,7 @@
 export { CLICK_ID_KEYS, attributionFromParams, cleanAttribution } from "./attribution.js";
 export { EVENT_NAME_PATTERN, ID_PATTERN, KEY_PATTERN, LANG_PATTERN, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN } from "./patterns.js";
 export { IMMEDIATE_CLICK_KINDS, builtInEvent, trimProps } from "./events.js";
+export { NOT_FOUND_META_NAME } from "./parity.js";
 export { SCROLL_MILESTONES, WIRE_VERSION } from "./constants.js";
 export { canonicalPage, cleanRefHost, normalizeHost, notFoundPage } from "./paths.js";
 export { cleanIdentifier, cleanLabel, cleanText, normalizeVideoId, slugify } from "./labels.js";

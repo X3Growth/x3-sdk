@@ -68,5 +68,6 @@ export function defaultClientConfig(host: string): ClientConfig {
     channelRules: 2,
     callingCode: null,
     journeys: { visitorId: true, clickIds: true, fbp: false, ttp: false },
+    autoCapture: { outboundLinks: true, fileDownloads: true, notFound: { enabled: true, meta: true, titlePattern: null } },
   };
 }

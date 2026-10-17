@@ -27,6 +27,9 @@ export type ClickContext = {
   whatsapp: boolean;
   apps: readonly string[];
   downloads: RegExp;
+  /** auto-capture switches (ClientConfig.autoCapture ∧ init autocapture): record the outbound host / detect file downloads */
+  outbound: boolean;
+  fileDownloads: boolean;
   /** selector of elements that count as clickable controls (CLICK_TARGET_SELECTOR) */
   targets: string;
 };
@@ -38,7 +41,9 @@ export function downloadPattern(extensions: readonly string[]): RegExp {
   return list.length ? new RegExp(`\\.(?:${list.join("|")})$`, "i") : /$^/;
 }
 
-export type ClickClass = { kind: ClickKind; href?: string; app?: MessagingApp };
+export type ClickClass = { kind: ClickKind; href?: string; app?: MessagingApp; ext?: string };
+
+const EXT = /\.([a-z0-9]{1,8})$/i;
 
 export function classifyClick(target: Element, tag: string, ctx: ClickContext): ClickClass {
   if (FORM_TAGS.has(tag)) return { kind: "form" };
@@ -57,11 +62,17 @@ export function classifyClick(target: Element, tag: string, ctx: ClickContext): 
       if (ctx.apps.includes(app) && pattern.test(href)) return { kind: "messaging", app };
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") return { kind: "button" };
-    if (target.hasAttribute("download") || ctx.downloads.test(url.pathname)) return { kind: "download" };
-    if (url.hash && url.origin === window.location.origin && url.pathname === window.location.pathname) return { kind: "anchor" };
     const host = normalizeHost(url.hostname);
-    if (ctx.config.isOwnHost(host)) return { kind: "internal", href: canonicalPage(host, url.pathname, ctx.config)?.page };
-    return { kind: "external", href: host || undefined };
+    const own = ctx.config.isOwnHost(host);
+    // downloads (auto-capture T5): own files as canonical path (never a personal page), files elsewhere as host
+    if (ctx.fileDownloads && (target.hasAttribute("download") || ctx.downloads.test(url.pathname))) {
+      const page = own ? canonicalPage(host, url.pathname, ctx.config) : null;
+      return { kind: "download", href: own ? (page && !page.personal ? page.page : undefined) : host || undefined, ext: EXT.exec(url.pathname)?.[1]?.toLowerCase() };
+    }
+    if (url.hash && url.origin === window.location.origin && url.pathname === window.location.pathname) return { kind: "anchor" };
+    if (own) return { kind: "internal", href: canonicalPage(host, url.pathname, ctx.config)?.page };
+    // outbound links switched off: still a click, the destination is not recorded
+    return { kind: "external", href: ctx.outbound ? host || undefined : undefined };
   }
   if (target.matches(ctx.targets)) return { kind: "button" };
   return { kind: "other" };

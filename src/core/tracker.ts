@@ -13,6 +13,7 @@ import {
   LANG_PATTERN,
   normalizeHost,
   notFoundPage,
+  NOT_FOUND_META_NAME,
   PROP_KEY_PATTERN,
   SCROLL_MILESTONES,
   storageKeys,
@@ -26,6 +27,7 @@ import {
   type ClientConfig,
   type CompiledTrackingConfig,
   type NavType,
+  type NotFoundVia,
   type PropValue,
   type ScrollMarks,
   type WireAdCookies,
@@ -166,6 +168,10 @@ export function createTracker(env: TrackerEnv): Tracker {
   let cfg: ClientConfig | null = null;
   let compiled: CompiledTrackingConfig | null = null;
   let clickCtx: ClickContext | null = null;
+  /** 404 auto-capture (T5): event switch, meta hint, compiled title rule */
+  let notFoundOn = true;
+  let notFoundMeta = true;
+  let notFoundTitle: RegExp | null = null;
   let ctaSelector = "";
   let keys = storageKeys("x3_");
 
@@ -598,7 +604,7 @@ export function createTracker(env: TrackerEnv): Tracker {
 
     const target = origin.closest(clickCtx.targets) ?? origin;
     const tag = target.tagName.toLowerCase().slice(0, 20);
-    const { kind, href, app } = classifyClick(target, tag, clickCtx);
+    const { kind, href, app, ext } = classifyClick(target, tag, clickCtx);
     const labelsAllowed = !pv.personal && !origin.closest(attrSelector("ignore"));
     const label = labelsAllowed && kind !== "form" ? labelOf(target, kind !== "other") : undefined;
     const section = sectionOf(origin, pv.personal);
@@ -611,7 +617,7 @@ export function createTracker(env: TrackerEnv): Tracker {
 
     pv.clk++;
     if (kind !== "other") pv.iclk++;
-    emit(pv, "click", { kind, tag: TAG_PATTERN.test(tag) ? tag : "unknown", label, href, section, y });
+    emit(pv, "click", { kind, tag: TAG_PATTERN.test(tag) ? tag : "unknown", label, href, section, y, ext });
     lastClick = { at: Date.now(), label, section };
 
     const cta = pv.notFound || !ctaSelector ? null : origin.closest(ctaSelector);
@@ -778,7 +784,10 @@ export function createTracker(env: TrackerEnv): Tracker {
     if (flushTimer) clearTimeout(flushTimer);
     flushTimer = null;
     if (!cfg) return;
-    if (current) sample();
+    if (current) {
+      lateNotFound(current);
+      sample();
+    }
     const now = Date.now();
     const groups = new Map<string, Pageview[]>();
     for (const pv of outbox) {
@@ -840,6 +849,32 @@ export function createTracker(env: TrackerEnv): Tracker {
    * Starts a pageview for the current location (TR-05). `force` starts a new
    * pageview for the same path (bfcache restore, resume, manual page()).
    */
+  /**
+   * Not-found page (T5): the marker attribute always counts (TR-21); with 404 auto-capture on also
+   * <meta name="x3-status" content="404"> and the project's title rule. Reads only the DOM.
+   */
+  const detectNotFound = (): NotFoundVia | null => {
+    if (!cfg) return null;
+    if (document.querySelector(`[${cfg.notFound.markerAttr}],[${DATA_ATTRIBUTES.notFound}]`)) return "marker";
+    if (notFoundMeta && document.querySelector(`meta[name="${NOT_FOUND_META_NAME}"][content="404"]`)) return "meta";
+    if (notFoundTitle?.test(document.title)) return "title";
+    return null;
+  };
+
+  /**
+   * Routers render the not-found view (and set its title) after the navigation: checked again
+   * after the commit and before the first send – only while the pageview was never sent.
+   */
+  const lateNotFound = (pv: Pageview) => {
+    if (pv.notFound || pv.seq > 0 || pv.personal || current !== pv || !cfg || !compiled || !notFoundOn) return;
+    const via = detectNotFound();
+    const page = via ? canonicalPage(pv.host, notFoundPage(pv.path, cfg.notFound.path, compiled), compiled) : null;
+    if (!via || !page || page.personal) return;
+    emit(pv, "not_found", { path: pv.path, via });
+    pv.path = page.page;
+    pv.notFound = true;
+  };
+
   const begin = (nav: NavType, force: boolean, pathOverride?: string) => {
     if (!running || !cfg || !compiled) return;
     if (stopTimer) clearTimeout(stopTimer);
@@ -858,8 +893,10 @@ export function createTracker(env: TrackerEnv): Tracker {
     expired = false;
 
     const hostname = normalizeHost(window.location.hostname);
-    const notFound = !!document.querySelector(`[${cfg.notFound.markerAttr}],[${DATA_ATTRIBUTES.notFound}]`);
+    const via = detectNotFound();
+    const notFound = via !== null;
     let target = canonicalPage(hostname, pathOverride ?? routePath(), compiled);
+    const requested = target;
     if (target && notFound) target = canonicalPage(hostname, notFoundPage(target.page, cfg.notFound.path, compiled), compiled);
     if (!target) return;
 
@@ -937,6 +974,8 @@ export function createTracker(env: TrackerEnv): Tracker {
     outbox.push(pv);
     lastActivity = now;
     heartbeatAt = now;
+    // 404 auto-capture (T5): the requested path – the pageview itself is reported under notFound.path
+    if (via && notFoundOn && requested && !requested.personal && !target.personal) emit(pv, "not_found", { path: requested.page, via });
 
     sample();
     if (nav === "spa") {
@@ -949,6 +988,7 @@ export function createTracker(env: TrackerEnv): Tracker {
             pv.sp = 0;
             pv.marks = {};
             sample();
+            lateNotFound(pv);
           }),
         ),
       );
@@ -1067,11 +1107,23 @@ export function createTracker(env: TrackerEnv): Tracker {
       }
     });
     ctaSelector = validSelectors.join(",");
+    const auto = options?.autocapture ?? {};
+    // auto-capture switches of the project (T5); init({autocapture}) can only switch them off
+    const ac = next.autoCapture ?? fallback.autoCapture!;
+    notFoundOn = ac.notFound.enabled && auto.notFound !== false;
+    notFoundMeta = notFoundOn && ac.notFound.meta;
+    try {
+      notFoundTitle = notFoundOn && ac.notFound.titlePattern ? new RegExp(ac.notFound.titlePattern, "i") : null;
+    } catch {
+      debug("invalid notFound.titlePattern");
+    }
     clickCtx = {
       config: compiled,
       whatsapp: next.messaging.whatsapp,
       apps: next.messaging.apps,
       downloads: downloadPattern(next.downloads.extensions),
+      outbound: ac.outboundLinks && auto.outboundLinks !== false,
+      fileDownloads: ac.fileDownloads && auto.downloads !== false,
       targets: `${BASE_TARGETS},${attrSelector("label")},[${DATA_ATTRIBUTES.event}]`,
     };
 
@@ -1087,7 +1139,6 @@ export function createTracker(env: TrackerEnv): Tracker {
 
     setupListeners();
     for (const plugin of pendingPlugins.splice(0)) register(plugin);
-    const auto = options?.autocapture ?? {};
     if (next.consent.cmp.length) requestPlugin("consent");
     if (next.plugins.sections && auto.sections !== false) requestPlugin("sections");
     if (next.plugins.video && auto.video !== false) requestPlugin("video");

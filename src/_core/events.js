@@ -2,6 +2,7 @@
 // Only the part of the core the SDK uses; changes are made upstream and synced.
 import { LIMITS, WIRE_VERSION } from "./constants.js";
 import { EVENT_LABELS } from "./i18n.js";
+import { NOT_FOUND_VIA } from "./parity.js";
 import { cleanIdentifier, cleanLabel, cleanText, IDENTIFIER_TEXT_PATTERN } from "./labels.js";
 import { EVENT_NAME_PATTERN, PROP_KEY_PATTERN } from "./patterns.js";
 const CLICK_KINDS = ["internal", "external", "anchor", "tel", "mailto", "whatsapp", "messaging", "download", "button", "form", "other"];
@@ -28,7 +29,9 @@ const BUILT_IN_EVENTS = [
       label: LABEL,
       href: { type: "string", max: LIMITS.maxPathLength, pattern: "^(?:\\/[A-Za-z0-9/._~:-]{0,199}|[a-z0-9.-]{1,100})$", optional: true },
       section: S_ID_OPT,
-      y: { type: "int", min: 0, max: 100, optional: true }
+      y: { type: "int", min: 0, max: 100, optional: true },
+      /** kind download: file extension (BUILD-ADDENDA T5) */
+      ext: { type: "string", max: 8, pattern: "^[a-z0-9]{1,8}$", optional: true }
     },
     { dedupe: "none", preset: "core" }
   ),
@@ -50,6 +53,14 @@ const BUILT_IN_EVENTS = [
   def("messaging_click", { app: { type: "enum", values: MESSAGING_APPS }, section: S_ID_OPT }, { preset: "messaging", dedupe: "name", flush: true }),
   def("calculator_used", {}, { preset: "calculator", oncePerPageview: true, sessionFlag: "calculator" }),
   def("booking", { via: { type: "string", max: 20, pattern: VIA } }, { preset: "booking", oncePerPageview: true, flush: true, sessionFlag: "booked" }),
+  def(
+    "not_found",
+    {
+      path: { type: "string", max: LIMITS.maxPathLength, pattern: "^\\/[A-Za-z0-9/._~:-]{0,199}$" },
+      via: { type: "enum", values: NOT_FOUND_VIA }
+    },
+    { preset: "core", oncePerPageview: true }
+  ),
   def("funnel_step", { funnel: { type: "string", max: 40, pattern: KEY }, step: { type: "string", max: 40, pattern: KEY } }, { preset: "funnel" })
 ];
 const BUILT_IN_EVENT_NAMES = BUILT_IN_EVENTS.map((event) => event.name);
@@ -174,6 +185,7 @@ const EVENT_DESCRIPTIONS = {
   messaging_click: "A link to another messenger enabled in the tracking config was clicked.",
   calculator_used: "A calculator/configurator was used (once per pageview).",
   booking: "A meeting was booked (booking adapters: postMessage embeds, window events, thank-you pages, Calendly).",
+  not_found: "A not-found (404) page was shown (auto-capture): the requested canonical path and how it was recognized (marker attribute, x3-status meta tag or title rule). The pageview itself is reported under the project's notFound path.",
   funnel_step: "Generic funnel step reached (funnel key + step key) for funnels driven from code."
 };
 function stringRule(spec) {

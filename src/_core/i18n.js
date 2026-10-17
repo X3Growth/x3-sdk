@@ -31,7 +31,8 @@ const EVENT_LABELS = {
   messaging_click: { en: "Messenger clicked", de: "Messenger geklickt" },
   calculator_used: { en: "Calculator used", de: "Rechner genutzt" },
   booking: { en: "Meeting booked", de: "Termin gebucht" },
-  funnel_step: { en: "Funnel step", de: "Trichterschritt" }
+  funnel_step: { en: "Funnel step", de: "Trichterschritt" },
+  not_found: { en: "Page not found (404)", de: "Seite nicht gefunden (404)" }
 };
 const DEVICE_LABELS = {
   mobile: { en: "Mobile", de: "Handy" },

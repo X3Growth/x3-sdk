@@ -44,6 +44,16 @@ export type X3InitOptions = {
     video?: boolean;
     /** <section> / [data-x3-section] visibility (sections plugin) */
     sections?: boolean;
+    /**
+     * Auto-capture switches of the project (Settings › Auto-Erfassung, ClientConfig.autoCapture);
+     * `false` here switches one off for this page only, `true` never overrides a project's „off“.
+     * outboundLinks: record the destination host of external link clicks ·
+     * downloads: classify file links as kind "download" (file path + extension) ·
+     * notFound: report 404 pages as `not_found` events (meta tag / title rule detection)
+     */
+    outboundLinks?: boolean;
+    downloads?: boolean;
+    notFound?: boolean;
   };
   /** ESM: plugins installed right away (others load lazily when the config enables them) */
   plugins?: X3Plugin[];
