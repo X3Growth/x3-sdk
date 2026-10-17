@@ -61,7 +61,18 @@ const BUILT_IN_EVENTS = [
     },
     { preset: "core", oncePerPageview: true }
   ),
-  def("funnel_step", { funnel: { type: "string", max: 40, pattern: KEY }, step: { type: "string", max: 40, pattern: KEY } }, { preset: "funnel" })
+  def("funnel_step", { funnel: { type: "string", max: 40, pattern: KEY }, step: { type: "string", max: 40, pattern: KEY } }, { preset: "funnel" }),
+  // round kv (BUILD-ADDENDA S): a completed purchase – every one counts (repeat purchases too), dedupe by order_id
+  def(
+    "purchase",
+    {
+      value: { type: "number", min: 0, max: 1e9 },
+      currency: { type: "string", max: 3, pattern: "^[A-Z]{3}$" },
+      order_id: { type: "string", max: 100, pattern: "^[A-Za-z0-9_.:#/-]{1,100}$" },
+      items: { type: "int", min: 0, max: 1e4, optional: true }
+    },
+    { preset: "shop", dedupe: "name_props", flush: true }
+  )
 ];
 const BUILT_IN_EVENT_NAMES = BUILT_IN_EVENTS.map((event) => event.name);
 const BUILT_IN_BY_NAME = new Map(BUILT_IN_EVENTS.map((event) => [event.name, event]));
@@ -186,7 +197,8 @@ const EVENT_DESCRIPTIONS = {
   calculator_used: "A calculator/configurator was used (once per pageview).",
   booking: "A meeting was booked (booking adapters: postMessage embeds, window events, thank-you pages, Calendly).",
   not_found: "A not-found (404) page was shown (auto-capture): the requested canonical path and how it was recognized (marker attribute, x3-status meta tag or title rule). The pageview itself is reported under the project's notFound path.",
-  funnel_step: "Generic funnel step reached (funnel key + step key) for funnels driven from code."
+  funnel_step: "Generic funnel step reached (funnel key + step key) for funnels driven from code.",
+  purchase: "A purchase was completed (shop mode): value \u2265 0, ISO currency, order_id (deduplication \u2013 the same order id is counted once) and optionally the number of items. Every purchase is its own conversion; repeat purchases of the same person count."
 };
 function stringRule(spec) {
   return spec.pattern ? "pattern" : spec.privacy ?? "identifier";

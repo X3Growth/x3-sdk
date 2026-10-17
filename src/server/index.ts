@@ -5,6 +5,8 @@
  *   import { createX3Server, requestContext } from "@x3growth/sdk/server";
  *   const x3 = createX3Server({ apiUrl: process.env.X3_API_URL!, apiKey: process.env.X3_SECRET_KEY!, project: process.env.X3_PROJECT_ID });
  *   await x3.leads.create({ sessionId, email, form: "contact", conversion: { definition: "lead", ...requestContext(request) } });
+ *   await x3.purchase({ orderId: "1042", value: 89.9, currency: "EUR", sessionId, email, ...requestContext(request) });
+ *   await x3.refund({ orderId: "1042", value: 20 });
  *
  * Secret keys (sk_3x_…) never belong in the browser. Contact data is sent in
  * plaintext over TLS and hashed by the API on receipt (never stored in plaintext).
@@ -97,6 +99,55 @@ export type X3ServerEvent = {
 };
 
 export type X3ServerEventsResult = { accepted: number; rejected: Array<{ index: number; code: string; message: string }> };
+
+/** POST /v1/projects/{project}/purchases (schema PurchaseInput): one purchase = one conversion, reported every time */
+export type X3PurchaseInput = X3RequestContext & {
+  /** your shop's order id – the dedupe key (the same order again is answered with `duplicate`) */
+  orderId: string;
+  /** gross order value ≥ 0 in `currency` */
+  value: number;
+  /** ISO 4217, e.g. "EUR" (converted into the project currency for reports; sent as is to the platforms) */
+  currency: string;
+  items?: number;
+  occurredAt?: string;
+  /** from the browser's getIds(): attribution and click ids come from the visit */
+  sessionId?: string;
+  leadId?: string;
+  email?: string;
+  phone?: string;
+  externalId?: string;
+  /** shared with the browser pixel's Purchase event (default: derived from the order id) */
+  eventId?: string;
+  eventSourceUrl?: string;
+  isTest?: boolean;
+  dryRun?: boolean;
+};
+
+export type X3PurchaseResult = {
+  /** created · duplicate (same order id – nothing new reported) · dry_run */
+  result: "created" | "duplicate" | "dry_run";
+  orderId: string;
+  conversion: ConversionRow | null;
+  /** platforms the purchase went (or goes) to */
+  reported: string[];
+  /** value in the project currency (null while no exchange rate exists) */
+  projectValue: number | null;
+  projectCurrency?: string;
+  /** fx_missing: held until the exchange rate exists, then reported */
+  heldReason?: "server_confirmation" | "fx_missing" | null;
+};
+
+/** POST /v1/projects/{project}/purchases/refunds (schema RefundInput) */
+export type X3RefundInput = {
+  orderId: string;
+  /** refunded amount in the order's currency; omitted = everything that is left */
+  value?: number;
+  /** when the refund happened (default: now) – the same orderId + value + at again changes nothing */
+  at?: string;
+  note?: string;
+};
+
+export type X3RefundResult = { result: "refunded" | "unchanged"; orderId: string; conversionId: string; refundedValue: number; refundedAt: string; netValue: number };
 type ConversionRow = Record<string, unknown> & { id: string; eventId: string; status: string };
 export type X3ConversionResult =
   | { result: "created" | "duplicate"; conversion: ConversionRow }
@@ -215,11 +266,45 @@ export function createX3Server(options: X3ServerOptions) {
         return request("POST", await projectPath("/leads"), input, idempotencyKey ?? randomId());
       },
     },
+    purchases: { create: purchase, refund },
+    /**
+     * Records a completed purchase (shop mode). Every order is its own conversion and is reported to
+     * the enabled platforms (Meta Purchase, Google Ads, TikTok) with value, currency and order id –
+     * repeat purchases of the same person count. Sending the same orderId again is safe: the API
+     * answers `duplicate`.
+     */
+    purchase,
+    /** Refunds an order fully (value omitted) or partly; revenue becomes net of refunds, nothing is re-reported */
+    refund,
     requestContext,
   };
+
+  async function purchase(input: X3PurchaseInput): Promise<X3PurchaseResult> {
+    assertPurchase(input);
+    // the order id is the dedupe key on the server (a repeat answers `duplicate`); the Idempotency-Key is
+    // random per call – a key derived from the order would replay `created` and reject a corrected body
+    return request("POST", await projectPath("/purchases"), input, randomId());
+  }
+
+  async function refund(input: X3RefundInput): Promise<X3RefundResult> {
+    if (!input || typeof input.orderId !== "string" || !ORDER_ID.test(input.orderId)) throw new TypeError("refund: orderId (1–100 chars [A-Za-z0-9_.:#/-]) is required");
+    if (input.value !== undefined && (typeof input.value !== "number" || !Number.isFinite(input.value) || input.value <= 0)) throw new TypeError("refund: value must be a positive number");
+    const body = { ...input, at: input.at ?? new Date().toISOString() };
+    // orderId + value + at identify a refund on the server: sending the same body again changes nothing
+    return request("POST", await projectPath("/purchases/refunds"), body, randomId());
+  }
 }
 
 export type X3Server = ReturnType<typeof createX3Server>;
+
+const ORDER_ID = /^[A-Za-z0-9_.:#/-]{1,100}$/;
+
+function assertPurchase(input: X3PurchaseInput): void {
+  if (!input || typeof input.orderId !== "string" || !ORDER_ID.test(input.orderId)) throw new TypeError("purchase: orderId (1–100 chars [A-Za-z0-9_.:#/-]) is required");
+  if (typeof input.value !== "number" || !Number.isFinite(input.value) || input.value < 0) throw new TypeError("purchase: value must be a number ≥ 0");
+  if (typeof input.currency !== "string" || !/^[A-Z]{3}$/.test(input.currency)) throw new TypeError("purchase: currency must be an ISO 4217 code like EUR");
+  if (input.sessionId !== undefined && !UUID.test(input.sessionId)) throw new TypeError("purchase: sessionId must be the browser's getIds().sessionId");
+}
 
 type HeaderSource = Request | { headers: Headers | Record<string, string | string[] | undefined> };
 

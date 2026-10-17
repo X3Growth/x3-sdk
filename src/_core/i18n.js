@@ -32,6 +32,7 @@ const EVENT_LABELS = {
   calculator_used: { en: "Calculator used", de: "Rechner genutzt" },
   booking: { en: "Meeting booked", de: "Termin gebucht" },
   funnel_step: { en: "Funnel step", de: "Trichterschritt" },
+  purchase: { en: "Purchase", de: "Kauf" },
   not_found: { en: "Page not found (404)", de: "Seite nicht gefunden (404)" }
 };
 const DEVICE_LABELS = {

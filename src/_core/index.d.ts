@@ -2761,7 +2761,7 @@ type PropSpec = {
     optional?: boolean;
 };
 type DedupeMode = "none" | "name" | "name_props";
-type EventPreset = "core" | "forms" | "video" | "quiz" | "cta" | "messaging" | "calculator" | "booking" | "funnel";
+type EventPreset = "core" | "forms" | "video" | "quiz" | "cta" | "messaging" | "calculator" | "booking" | "funnel" | "shop";
 type EventDefinition = {
     name: string;
     props: Readonly<Record<string, PropSpec>>;
@@ -2951,7 +2951,8 @@ declare function validFbCookie(value: unknown, kind: "fbc" | "fbp" | "ttp"): str
  * machine (parity DS-01…DS-08), shared by the API pipeline and the dashboard.
  */
 /** funnel sources (quiz, booking, whatsapp_manual, manual) + generic triggers */
-declare const CONVERSION_SOURCES: readonly ["quiz", "booking", "whatsapp_manual", "manual", "event", "goal", "lead", "api"];
+/** `purchase` (round kv, S): shop purchases (purchases.create, SDK event purchase) */
+declare const CONVERSION_SOURCES: readonly ["quiz", "booking", "whatsapp_manual", "manual", "event", "goal", "lead", "api", "purchase"];
 type ConversionSource = (typeof CONVERSION_SOURCES)[number];
 
 export { CLICK_ID_KEYS, EVENT_NAME_PATTERN, ID_PATTERN, IMMEDIATE_CLICK_KINDS, KEY_PATTERN, LANG_PATTERN, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, attributionFromParams, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, compileHostMatcher, compileMatcher, compileMatchers, hashIdentifiers, isSafeRegex, normalizeHost, normalizeVideoId, notFoundPage, slugify, storageKeys, trimProps, validFbCookie };
