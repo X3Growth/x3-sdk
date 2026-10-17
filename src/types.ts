@@ -96,7 +96,7 @@ export type CustomVideoTracker = {
   ended(): void;
 };
 
-export type VideoOptions = { id?: string; format?: "landscape" | "portrait"; src?: string };
+export type VideoOptions = { id?: string; format?: "landscape" | "portrait"; src?: string; /** display name in the dashboard */ title?: string };
 
 export type X3Plugin = {
   name: PluginName | (string & {});
@@ -259,6 +259,8 @@ export const DATA_ATTRIBUTES = {
   /** video id / format (data-track-video, data-track-video-format) */
   video: "data-x3-video",
   videoFormat: "data-x3-video-format",
+  /** display name of a video in the dashboard (else title/aria-label, figcaption, file name) */
+  videoTitle: "data-x3-video-title",
   /** form name (data-track on forms) */
   form: "data-x3-form",
   /** not-found page marker (data-track-404); the project's notFound.markerAttr is used in any case */

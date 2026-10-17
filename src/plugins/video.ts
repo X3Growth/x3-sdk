@@ -61,6 +61,31 @@ export function addRange(ranges: Array<[number, number]>, open: [number, number]
   return ranges.find((range) => range[0] <= b && b <= range[1]) ?? null;
 }
 
+const TITLE_MAX = 80;
+const clip = (value: string | null | undefined): string | null => {
+  const text = (value ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  return text ? text.slice(0, TITLE_MAX).trim() : null;
+};
+
+/**
+ * Display name of a <video> for the dashboard: data-x3-video-title (on the video or a wrapper) ›
+ * title / aria-label › the <figcaption> of its <figure> › the file name. The server cleans it
+ * again (no e-mail/phone-like text, ≤ 80 chars).
+ */
+export function videoTitleOf(el: HTMLVideoElement, attr: (el: Element) => string | null, selectors: { title: string; wrapper: string }, file: string): { tt: string; ts: NonNullable<WireVideo["ts"]> } | null {
+  const marked = el.closest(selectors.title);
+  const fromAttr = clip(marked ? attr(marked) : null);
+  if (fromAttr) return { tt: fromAttr, ts: "attribute" };
+  for (const node of [el, el.closest(selectors.wrapper)]) {
+    const label = clip(node?.getAttribute("title")) ?? clip(node?.getAttribute("aria-label"));
+    if (label) return { tt: label, ts: "label" };
+  }
+  const caption = clip(el.closest("figure")?.querySelector("figcaption")?.textContent);
+  if (caption) return { tt: caption, ts: "caption" };
+  const name = clip(fileName(file).replace(/\.[A-Za-z0-9]+$/, ""));
+  return name ? { tt: name, ts: "file" } : null;
+}
+
 export function video(): X3Plugin {
   return {
     name: "video",
@@ -117,7 +142,7 @@ export function video(): X3Plugin {
       };
 
       /** New play from < 1 s or after `ended`; resuming a running play is not a new play; ≤ 10 per pageview (TR-63) */
-      const onPlay = (ref: object, media: Media, id: string, src: string) => {
+      const onPlay = (ref: object, media: Media, id: string, src: string, title: { tt: string; ts: NonNullable<WireVideo["ts"]> } | null = null) => {
         const pv = host.current();
         if (!pv) return;
         host.markActivity();
@@ -139,6 +164,7 @@ export function video(): X3Plugin {
           done: false,
           b: "0".repeat(25),
           r: [],
+          ...(title ? title : {}),
         };
         const next: Play = { media, pv, wire, bits: new Uint8Array(100), open: null, last: media.time(), startEvent: null };
         plays.set(ref, next);
@@ -174,7 +200,9 @@ export function video(): X3Plugin {
         const file = el.currentSrc || el.getAttribute("src") || "";
         const marked = el.closest(host.selector("video"));
         const id = options?.id || (marked ? host.attr(marked, "video") : null) || fileName(file).replace(/\.[A-Za-z0-9]+$/, "");
-        onPlay(el, elementMedia(el), id, options?.src ? idSafe(options.src) : fileName(file));
+        const declaredTitle = clip(options?.title);
+        const title = declaredTitle ? { tt: declaredTitle, ts: "attribute" as const } : videoTitleOf(el, (node) => host.attr(node, "videoTitle"), { title: host.selector("videoTitle"), wrapper: host.selector("video") }, file);
+        onPlay(el, elementMedia(el), id, options?.src ? idSafe(options.src) : fileName(file), title);
       };
 
       const onElement = (event: Event) => {
@@ -225,7 +253,8 @@ export function video(): X3Plugin {
               plays.delete(ref);
             }
             paused = false;
-            onPlay(ref, media, id, idSafe(options.src ?? id));
+            const title = clip(options.title);
+            onPlay(ref, media, id, idSafe(options.src ?? id), title ? { tt: title, ts: "attribute" } : null);
           },
           progress(positionS, durationS) {
             position = at(positionS);

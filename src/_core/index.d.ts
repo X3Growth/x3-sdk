@@ -2839,6 +2839,10 @@ type WireVideo = {
     ws: number;
     /** max position in % */
     mp: number;
+    /** display name from the page markup (optional, ≤ 80 chars) */
+    tt?: string;
+    /** where tt came from: data-x3-video-title, title/aria-label, figcaption, file name */
+    ts?: "attribute" | "label" | "caption" | "file";
     /** `ended` fired */
     done: boolean;
     /** 100-bit coverage bitmap, 25 lowercase hex chars, MSB first */
