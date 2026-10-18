@@ -5,6 +5,19 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] – 2026-10-18
+
+### Added
+- Recordings, heatmaps and live (X3 Growth Intelligence): lazy plugins `x3.heat.js`, `x3.signals.js`,
+  `x3.live.js`, `x3.replay.js` (rrweb-based, inputs and personal-looking text masked in the browser),
+  `x3.fflate.js` and `x3.privacy.js`, loaded only when the project enables the signal and the visitor's
+  consent state allows it. `x3.consent({ analytics, recordings })` sets the purposes separately; Global
+  Privacy Control, opt-out and test traffic stop every behavior signal.
+- `createX3ProxyHandler` (`@x3growth/sdk/next/proxy`) forwards the new path families `/v1/r`, `/v1/r/css`,
+  `/v1/hb/{pk}`, `/v1/l`, `/v1/snap[/session]` and `/v1/privacy/{pk}[/erase|/export]` (recording chunks up
+  to 1 MB, snapshots up to 4 MB) and passes the visitor's coarse location from Vercel/Cloudflare headers.
+  Sites using the first-party proxy need this version for recordings; nothing else changes.
+
 ## [0.1.2] – 2026-10-17
 
 ### Fixed
