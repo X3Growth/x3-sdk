@@ -88,14 +88,12 @@ const BUILT_IN_EVENTS = [
     { preset: "experiments", flush: true, dedupe: "none" }
   )
 ];
-const BUILT_IN_EVENT_NAMES = BUILT_IN_EVENTS.map((event) => event.name);
+const BUILT_IN_EVENT_NAMES = /* @__PURE__ */ BUILT_IN_EVENTS.map((event) => event.name);
 const BUILT_IN_BY_NAME = new Map(BUILT_IN_EVENTS.map((event) => [event.name, event]));
 function builtInEvent(name) {
   return BUILT_IN_BY_NAME.get(name);
 }
-const SESSION_FLAG_EVENTS = Object.fromEntries(
-  BUILT_IN_EVENTS.filter((event) => event.sessionFlag).map((event) => [event.name, event.sessionFlag])
-);
+const SESSION_FLAG_EVENTS = /* @__PURE__ */ (() => Object.fromEntries(BUILT_IN_EVENTS.filter((event) => event.sessionFlag).map((event) => [event.name, event.sessionFlag])))();
 function buildEventRegistry(custom, allowUnregistered) {
   const byName = new Map(BUILT_IN_BY_NAME);
   for (const schema of custom) {

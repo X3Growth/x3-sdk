@@ -5,6 +5,35 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] – 2026-10-18
+
+### Added
+- Experiments (A/B/n): `x3.variant(key, { expose, fallback })` answers the arm of a flag key synchronously
+  (never throws, `control` while the visitor is not enrolled or the assignment is not known yet),
+  `x3.experiment(key)` returns arm, reason and arm params, `x3.expose(key)` logs the exposure at the point
+  where the arms differ (once per pageview). `x3.experiments.ready(timeoutMs)`, `.onChange(listener)` and
+  `.all()` for anti-flicker slots and QA.
+- Script tag / dispatcher: `x3("variant", key, (arm, info) => …, { expose })` (callback once the assignment
+  is known, at most 300 ms, then control) and `x3("expose", key)`. Assignment, hashing and the `/v1/x`
+  request live in the lazy plugin `x3.experiments.js`, which the core loads only when the project config
+  carries experiments; `x3.full.js` bundles it.
+- Code-call telemetry: keys called on a pageview are sent as `xc` so X3 can show „Code live erkannt“ and
+  resolve the cleanup task.
+- QA overrides `?x3_force=<key>:<arm>` and signed `?x3_force_t=` links; forced visits count as test traffic.
+- React (`@x3growth/sdk/react`): `useVariant`, `useExpose`, `<Variant>`, `<X3Experiments>` (server assignments
+  for hydration without flicker).
+- Next.js (`@x3growth/sdk/next`): `getAssignments` / `getVariant` (server helper, 150 ms timeout → control),
+  `<X3Analytics experiments={…}>`; the proxy handler forwards `GET /v1/x/{pk}` (consented `x3_vid` as
+  `x-3x-vid`).
+- Server (`@x3growth/sdk/server`): `experiments.assign(...)`, `leads.addNote(ref, text)` for visitor follow-up
+  text on an existing lead (by lead id or the create idempotency key, no new lead or conversion), CRM routing
+  options `crm` / `crmWait` on `leads.create` and the CRM result in its response.
+- Browser leads: `x3.lead(data)` (POST `/v1/leads`, when the project allows browser leads).
+
+### Changed
+- Size budget of the core `x3.js` raised consciously from 15.5 to 16 KB gz for the experiments stub;
+  `x3.full.js` 29 KB; new budget `x3.experiments.js` 3 KB.
+
 ## [0.4.0] – 2026-10-18
 
 ### Added

@@ -53,7 +53,7 @@ const GSC_TOOLS = {
   listSites: "GOOGLE_SEARCH_CONSOLE_LIST_SITES",
   searchAnalytics: "GOOGLE_SEARCH_CONSOLE_SEARCH_ANALYTICS_QUERY"
 };
-const GSC_ALLOWED_TOOLS = Object.values(GSC_TOOLS);
+const GSC_ALLOWED_TOOLS = /* @__PURE__ */ Object.values(GSC_TOOLS);
 const GSC_DIMENSIONS = ["query", "page", "country", "device", "date"];
 const GSC_GRAINS = ["total", "page", "query", "query_page", "country", "device"];
 const GSC_DEVICES = ["desktop", "mobile", "tablet"];
