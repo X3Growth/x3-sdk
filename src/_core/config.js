@@ -79,6 +79,10 @@ function clientJourneys(config, destinations = { meta: false, tiktok: false }) {
   const create = (enabled) => settings.adCookies === "always" || settings.adCookies === "auto" && enabled;
   return { visitorId: settings.visitorId, clickIds: settings.clickIds, fbp: create(destinations.meta), ttp: create(destinations.tiktok) };
 }
+const UNIVERSAL_TEST_PARAM = "x3_test";
+function effectiveTestParams(params) {
+  return [.../* @__PURE__ */ new Set([...params, UNIVERSAL_TEST_PARAM])];
+}
 function toClientConfig(config, rev, channelRules, callingCode, destinations = { meta: false, tiktok: false }) {
   return {
     rev,
@@ -89,7 +93,7 @@ function toClientConfig(config, rev, channelRules, callingCode, destinations = {
     personalMode: config.personalMode,
     valueRedactions: config.valueRedactions,
     variantParam: config.variantParam,
-    testParams: config.testParams,
+    testParams: effectiveTestParams(config.testParams),
     notrackParam: config.notrackParam,
     storagePrefix: config.storagePrefix,
     consent: config.consent,
@@ -125,11 +129,13 @@ function storageKeys(prefix) {
 export {
   DEFAULT_EXCLUDE_PATHS,
   DEFAULT_JOURNEY_SETTINGS,
+  UNIVERSAL_TEST_PARAM,
   clientJourneys,
   compileClientConfig,
   compileTrackingConfig,
   defaultOrigins,
   defaultTrackingConfig,
+  effectiveTestParams,
   storageKeys,
   toClientConfig
 };

@@ -930,7 +930,8 @@ export function createTracker(env: TrackerEnv): Tracker {
     }
 
     const params = new URLSearchParams(window.location.search);
-    if (cfg.testParams.some((param) => params.get(param) === "1")) testTraffic = true;
+    // ?x3_test=1 always counts (also for configs of older APIs and projects with their own test parameter)
+    if ([...cfg.testParams, "x3_test"].some((param) => params.get(param) === "1")) testTraffic = true;
     let attrFrom: AttributionOrigin = "none";
     let attr: Attribution = {};
     if (!target.personal) {
