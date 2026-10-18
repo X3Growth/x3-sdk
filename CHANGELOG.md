@@ -5,6 +5,21 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] – 2026-10-19
+
+First stable release: the public API of 0.5.0 (analytics, events, leads, experiments, React/Next/server helpers)
+is unchanged and now covered by semantic versioning.
+
+### Fixed
+- Experiments: test links (`?x3_force=` and signed `?x3_force_t=`) also preview while tracking does not run
+  (opted out via `x3_notrack`, consent pending): the forced arm is shown, `/v1/x` is asked once with the token
+  (no unit, no consent flag), nothing is exposed, counted or sent. Before, such a visitor stayed on control.
+- Experiments: a test link survives navigation and reloads in the same tab (sessionStorage `x3_xp_qa`, written
+  only by test links); `?x3_force=` with an empty value ends the preview.
+
+### Changed
+- Size budget of the lazy `x3.experiments.js` 3.5 KB (measured 3.20 KB); the core stays below 16 KB.
+
 ## [0.5.0] – 2026-10-18
 
 ### Added

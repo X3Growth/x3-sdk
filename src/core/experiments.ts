@@ -37,6 +37,36 @@ export type Experiments = ExperimentsApi & {
 };
 
 const READY_MS = 300;
+/** sessionStorage key: QA overrides/token of a test link survive navigation and reloads in this tab */
+const PREVIEW_KEY = "x3_xp_qa";
+
+type Preview = { f?: string; t?: string };
+
+/**
+ * QA preview from a test link: `?x3_force=` / `?x3_force_t=` in the URL, else what an earlier page of this tab
+ * stored (a test link usually opens the home page and the visitor navigates on). Only test links write it
+ * (sessionStorage, this tab only); `?x3_force=` with an empty value ends the preview.
+ */
+function readPreview(search: URLSearchParams): Preview {
+  let stored: Preview;
+  try {
+    stored = JSON.parse(sessionStorage.getItem(PREVIEW_KEY) || "{}") as Preview;
+  } catch {
+    stored = {};
+  }
+  const f = search.get(FORCE_PARAM);
+  const t = search.get(FORCE_TOKEN_PARAM);
+  if (f === null && t === null) return { f: typeof stored.f === "string" ? stored.f : undefined, t: typeof stored.t === "string" ? stored.t : undefined };
+  // an empty value ends the whole preview; a new value replaces only its own part
+  const next: Preview = f === "" || t === "" ? {} : { f: f ?? stored.f, t: t ?? stored.t };
+  try {
+    if (next.f || next.t) sessionStorage.setItem(PREVIEW_KEY, JSON.stringify(next));
+    else sessionStorage.removeItem(PREVIEW_KEY);
+  } catch {
+    // storage blocked: the preview still works on this page
+  }
+  return next;
+}
 
 export function createExperiments(host: ExperimentsHost): Experiments {
   const pageload = uuid();
@@ -49,9 +79,14 @@ export function createExperiments(host: ExperimentsHost): Experiments {
   let exposed = new Set<string>();
   const listeners = new Set<(key: string) => void>();
   const search = typeof location === "undefined" ? new URLSearchParams() : new URLSearchParams(location.search);
-  const overrides = parseForceParam(search.get(FORCE_PARAM));
-  const token = search.get(FORCE_TOKEN_PARAM);
-  if (Object.keys(overrides).length > 0 || token) host.markTest();
+  const preview = typeof location === "undefined" ? {} : readPreview(search);
+  const overrides = parseForceParam(preview.f ?? null);
+  const token = preview.t ?? null;
+  const previewing = Object.keys(overrides).length > 0 || !!token;
+  if (previewing) host.markTest();
+  /** a test link also previews without tracking (opt-out/x3_notrack, consent pending): the page from the URL */
+  const urlPage = () => ({ host: location.hostname.toLowerCase(), path: location.pathname || "/", lang: document.documentElement.lang ? document.documentElement.lang.slice(0, 2).toLowerCase() : null });
+  let previewRequested = false;
   // assignments rendered on the server (<X3Analytics experiments>) – no /v1/x request needed
   const server = (typeof window === "undefined" ? undefined : (window as Window & { __x3xp?: Record<string, Answer> }).__x3xp) ?? {};
   answers = { ...server };
@@ -74,8 +109,12 @@ export function createExperiments(host: ExperimentsHost): Experiments {
     const answer = answers[key];
     // a signed QA link may preview a draft that is not in the public config yet
     if (!entry) return answer?.r === "override" ? info(answer.arm, "override", true, answer.p ?? {}, true) : retired ? info(retired.o, "rolled_out") : info("control", "unknown_key");
-    if (!page || !host.enrollable()) return info("control", page ? "no_consent" : "pending");
     const override = overrides[key] ?? (answer?.r === "override" ? answer.arm : undefined);
+    if (!page || !host.enrollable()) {
+      // test link without tracking: the forced arm is shown, nothing is exposed or counted
+      if (previewing && override && entry.arms.some((arm) => arm.k === override)) return info(override, "override", true, entry.arms.find((arm) => arm.k === override)?.p ?? answer?.p ?? {});
+      return info("control", page ? "no_consent" : "pending");
+    }
     if (stale() && entry.status !== "rolled_out" && !answer) return info("control", "pending");
     if (entry.scope !== "pageload" && (entry.status === "running" || entry.status === "cooldown") && !override) {
       if (!answer) return info("control", settled ? "unit_unavailable" : "pending");
@@ -118,14 +157,8 @@ export function createExperiments(host: ExperimentsHost): Experiments {
     }
   };
 
-  /** /v1/x only when an entry with a server unit matches this page, or the config is stale (C18, C28) */
-  const refresh = guard(() => {
-    const current = section();
-    const page = host.page();
-    if ((!current && !token) || !page || !host.enrollable() || inflight) return;
-    const wanted = (current?.list ?? []).filter((entry) => (entry.scope !== "pageload" || entry.tgt?.channels || entry.tgt?.devices || entry.tgt?.countries) && (entry.status === "running" || entry.status === "cooldown" || stale()) && clientTargetingMatches(entry.tgt, page) && !requested.has(entry.key));
-    if (wanted.length === 0 && !stale() && !token) return settle();
-    for (const entry of wanted) requested.add(entry.key);
+  /** GET /v1/x with the page facts (and the QA token); answers merge into `answers`, listeners hear changes */
+  const request = (page: { host: string; path: string; lang: string | null }, current: ClientExperiments | null, consented: boolean) => {
     const query = new URLSearchParams({ h: page.host, p: page.path, cv: String(current?.rev ?? 0), l: page.lang ?? "", t: token ?? "" });
     // channel targeting (server-side): UTM values and which click ids are present – never the ids themselves
     for (const name of ["utm_source", "utm_medium", "utm_campaign", "gclid", "gbraid", "wbraid", "fbclid", "li_fat_id", "ttclid", "msclkid"]) {
@@ -133,7 +166,7 @@ export function createExperiments(host: ExperimentsHost): Experiments {
       if (value) query.set(name, name.startsWith("utm") ? value.slice(0, 100) : "1");
     }
     if (document.referrer) query.set("rh", document.referrer.split("/")[2] ?? "");
-    if (host.consent()) query.set("c", "1");
+    if (consented) query.set("c", "1");
     inflight = fetch(`${host.apiHost()}/v1/x/${host.key()}?${query.toString()}`, { credentials: "omit" })
       .then((response) => (response.ok ? (response.json() as Promise<{ a?: Record<string, Answer>; cfg?: ClientExperiments | null }>) : null))
       .then((body) => {
@@ -149,6 +182,24 @@ export function createExperiments(host: ExperimentsHost): Experiments {
         inflight = null;
         settle();
       });
+  };
+
+  /** /v1/x only when an entry with a server unit matches this page, or the config is stale (C18, C28) */
+  const refresh = guard(() => {
+    const current = section();
+    const page = host.page();
+    if (inflight) return;
+    if (!page || !host.enrollable()) {
+      // test link without tracking (opt-out, x3_notrack, consent pending): one request for the token's arm, no unit, no consent
+      if (!token || previewRequested || typeof location === "undefined") return;
+      previewRequested = true;
+      return request(urlPage(), current, false);
+    }
+    if (!current && !token) return;
+    const wanted = (current?.list ?? []).filter((entry) => (entry.scope !== "pageload" || entry.tgt?.channels || entry.tgt?.devices || entry.tgt?.countries) && (entry.status === "running" || entry.status === "cooldown" || stale()) && clientTargetingMatches(entry.tgt, page) && !requested.has(entry.key));
+    if (wanted.length === 0 && !stale() && !token) return settle();
+    for (const entry of wanted) requested.add(entry.key);
+    request(page, current, host.consent());
   });
 
   const api: Experiments = {

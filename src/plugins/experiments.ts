@@ -27,6 +27,9 @@ export function experiments(): X3Plugin {
       });
       host.hook({ begin: () => api.pageview(), consent: () => api.refresh() });
       if (host.current()) api.pageview();
+      // no pageview yet (tracking starts right after the plugins) or none at all (opt-out): a test link still
+      // previews – refresh once the tracker had its chance to begin
+      else setTimeout(() => api.refresh(), 0);
       return api;
     },
   };
