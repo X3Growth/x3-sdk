@@ -107,7 +107,15 @@ export type CustomVideoTracker = {
   ended(): void;
 };
 
-export type VideoOptions = { id?: string; format?: "landscape" | "portrait"; src?: string; /** display name in the dashboard */ title?: string };
+export type VideoOptions = {
+  id?: string;
+  format?: "landscape" | "portrait";
+  src?: string;
+  /** display name in the dashboard */
+  title?: string;
+  /** URL of the played file for frame previews in the dashboard (default: the element's currentSrc; only the project's own hosts are kept) */
+  url?: string;
+};
 
 export type X3Plugin = {
   name: PluginName | (string & {});

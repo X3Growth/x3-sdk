@@ -756,7 +756,7 @@ export function createTracker(env: TrackerEnv): Tracker {
       eng: Math.round(pv.eng),
       clk: pv.clk,
       iclk: pv.iclk,
-      vids: pv.vids.map((video) => ({ ...video, t: Math.round(video.t), dur: round1(video.dur), ws: Math.round(video.ws), mp: Math.round(video.mp), r: video.r.map(([from, to]): [number, number] => [from, to]) })),
+      vids: pv.vids.map((video) => ({ ...video, t: Math.round(video.t), dur: round1(video.dur), ws: Math.round(video.ws), mp: Math.round(video.mp), r: video.r.map(([from, to]): [number, number] => [from, to]), ...(video.rw ? { rw: video.rw.map(([from, to]): [number, number] => [from, to]) } : {}) })),
       ...behavior.pageview(pv.id),
     };
   };

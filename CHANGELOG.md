@@ -5,6 +5,16 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] – 2026-10-18
+
+### Added
+- Video: ranges a viewer watched again within the same play (seeking back, rewinding) are sent as `rw`
+  (merged, at most 20 per play) – the dashboard shows rewatched parts and the per-visit watch strip.
+- Video: the absolute URL of the played file (`u`, without query string and hash, at most 300 characters)
+  for frame previews in the dashboard; `blob:`/`data:` sources send none, the server keeps it only on the
+  site's own hosts. Custom players and `x3.video.track()` take it as option `url`.
+- Oversized states merge the rewatch ranges to 5 and drop the preview URL before any section.
+
 ### Fixed
 - Recordings keep what a page recorded when the recording stops (too noisy, too slow, page excluded on an
   SPA navigation): the full snapshot and the events since the last packet are still uploaded – before, a

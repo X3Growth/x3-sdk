@@ -45,6 +45,11 @@ const LIMITS = {
   maxVideoRanges: 40,
   /** parity */
   shrinkVideoRanges: 20,
+  /** rewatched ranges per play (seconds played again inside the same play, AG); shrunk to 5 for oversized states */
+  maxVideoRewatchRanges: 20,
+  shrinkVideoRewatchRanges: 5,
+  /** absolute URL of a self-hosted video file (no query/hash) for frame previews (AG) */
+  maxVideoUrlLength: 300,
   /** parity */
   maxLabelLength: 80,
   /** parity */

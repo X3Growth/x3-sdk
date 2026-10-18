@@ -1,17 +1,21 @@
 import { normalizeVideoId, type VideoFormat, type WireEvent, type WireVideo } from "../_core/index.js";
 import type { CustomVideoTracker, TrackedPageview, VideoOptions, X3Plugin, X3PluginHost } from "../types";
 import { fileName, idSafe, mergeClosest, round1 } from "../core/util";
-import { MAX_VIDEO_DURATION_S, MAX_VIDEO_PLAYS_PER_PAGEVIEW, MAX_VIDEO_RANGES } from "../core/constants";
+import { MAX_VIDEO_DURATION_S, MAX_VIDEO_PLAYS_PER_PAGEVIEW, MAX_VIDEO_RANGES, MAX_VIDEO_REWATCH_RANGES, MAX_VIDEO_URL_LENGTH } from "../core/constants";
 
 /**
  * Video retention (parity TR-60…TR-67): per play a 100-bucket coverage bitmap,
- * merged watched ranges, watched seconds, max position and completion.
+ * merged watched ranges, watched seconds, max position and completion; since 0.4
+ * (BUILD-ADDENDA AG) also the ranges played again within the play (`rw`) and the
+ * file URL for frame previews (`u`, http(s) without query/hash).
  * Auto-captures <video controls> and videos inside [data-x3-video]; other
  * players feed positions through x3.video.custom(id).
  */
 
 /** Range ends closer than this (s) are one continuous watched range – parity */
 const RANGE_JOIN_S = 0.3;
+/** Overlaps up to this (s) are rounding of the open range, not a rewatch */
+const REWATCH_MIN_S = 0.1;
 const MEDIA_EVENTS = ["play", "pause", "timeupdate", "seeking", "seeked", "ended"];
 
 /** Source of positions: a <video> element or a custom player */
@@ -24,6 +28,8 @@ type Play = {
   bits: Uint8Array;
   /** range currently extended by playback (null after a seek) */
   open: [number, number] | null;
+  /** rewatch range currently extended (null when playback leaves watched ground) */
+  rwOpen: [number, number] | null;
   /** position at the last progress sample */
   last: number;
   /** queued video_start event – its format is filled in once the metadata is known (TR-62) */
@@ -37,7 +43,7 @@ export function bitmapHex(bits: Uint8Array): string {
 }
 
 /** Adds a watched range: joins ranges closer than 0.3 s, merges overlaps, keeps ≤ 40 (TR-65) */
-export function addRange(ranges: Array<[number, number]>, open: [number, number] | null, from: number, to: number): [number, number] | null {
+export function addRange(ranges: Array<[number, number]>, open: [number, number] | null, from: number, to: number, limit = MAX_VIDEO_RANGES): [number, number] | null {
   const a = round1(from);
   const b = Math.max(a, round1(to));
   if (open && a <= open[1] + RANGE_JOIN_S) {
@@ -57,8 +63,32 @@ export function addRange(ranges: Array<[number, number]>, open: [number, number]
       i++;
     }
   }
-  mergeClosest(ranges, MAX_VIDEO_RANGES);
+  mergeClosest(ranges, limit);
   return ranges.find((range) => range[0] <= b && b <= range[1]) ?? null;
+}
+
+/** Part of [from, to] that already lies inside the watched ranges (played again), or null */
+export function rewatched(ranges: ReadonlyArray<[number, number]>, from: number, to: number): [number, number] | null {
+  let a = Infinity;
+  let b = -Infinity;
+  for (const [x, y] of ranges) {
+    if (y <= from || x >= to) continue;
+    a = Math.min(a, Math.max(from, x));
+    b = Math.max(b, Math.min(to, y));
+  }
+  return b - a > REWATCH_MIN_S ? [a, b] : null;
+}
+
+/** Absolute http(s) URL of a video file without query/hash (tokens), ≤ 300 chars – else undefined */
+export function videoUrl(value: string | undefined | null): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value, location.href);
+    const clean = url.protocol === "https:" || url.protocol === "http:" ? url.origin + url.pathname : "";
+    return clean && clean.length <= MAX_VIDEO_URL_LENGTH ? clean : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 const TITLE_MAX = 80;
@@ -130,6 +160,9 @@ export function video(): X3Plugin {
         // the final timeupdate before `ended` fires with paused already true
         if (delta > 0 && delta < 1.5 && (!media.paused() || media.ended())) {
           wire.ws += delta;
+          const again = rewatched(wire.r, play.last, now);
+          if (again) play.rwOpen = addRange((wire.rw ??= []), play.rwOpen, again[0], again[1], MAX_VIDEO_REWATCH_RANGES);
+          else play.rwOpen = null;
           play.open = addRange(wire.r, play.open, play.last, now);
           if (duration) {
             const to = Math.min(99, Math.floor((now / duration) * 100));
@@ -142,7 +175,7 @@ export function video(): X3Plugin {
       };
 
       /** New play from < 1 s or after `ended`; resuming a running play is not a new play; ≤ 10 per pageview (TR-63) */
-      const onPlay = (ref: object, media: Media, id: string, src: string, title: { tt: string; ts: NonNullable<WireVideo["ts"]> } | null = null) => {
+      const onPlay = (ref: object, media: Media, id: string, src: string, title: { tt: string; ts: NonNullable<WireVideo["ts"]> } | null = null, url?: string) => {
         const pv = host.current();
         if (!pv) return;
         host.markActivity();
@@ -165,8 +198,9 @@ export function video(): X3Plugin {
           b: "0".repeat(25),
           r: [],
           ...(title ? title : {}),
+          ...(url ? { u: url } : {}),
         };
-        const next: Play = { media, pv, wire, bits: new Uint8Array(100), open: null, last: media.time(), startEvent: null };
+        const next: Play = { media, pv, wire, bits: new Uint8Array(100), open: null, rwOpen: null, last: media.time(), startEvent: null };
         plays.set(ref, next);
         all.add(next);
         pv.vids.push(wire);
@@ -180,6 +214,7 @@ export function video(): X3Plugin {
         if (type === "seeking" || type === "seeked") {
           play.last = play.media.time();
           play.open = null;
+          play.rwOpen = null;
           return;
         }
         progress(play);
@@ -202,7 +237,7 @@ export function video(): X3Plugin {
         const id = options?.id || (marked ? host.attr(marked, "video") : null) || fileName(file).replace(/\.[A-Za-z0-9]+$/, "");
         const declaredTitle = clip(options?.title);
         const title = declaredTitle ? { tt: declaredTitle, ts: "attribute" as const } : videoTitleOf(el, (node) => host.attr(node, "videoTitle"), { title: host.selector("videoTitle"), wrapper: host.selector("video") }, file);
-        onPlay(el, elementMedia(el), id, options?.src ? idSafe(options.src) : fileName(file), title);
+        onPlay(el, elementMedia(el), id, options?.src ? idSafe(options.src) : fileName(file), title, videoUrl(options?.url ?? file));
       };
 
       const onElement = (event: Event) => {
@@ -254,7 +289,7 @@ export function video(): X3Plugin {
             }
             paused = false;
             const title = clip(options.title);
-            onPlay(ref, media, id, idSafe(options.src ?? id), title ? { tt: title, ts: "attribute" } : null);
+            onPlay(ref, media, id, idSafe(options.src ?? id), title ? { tt: title, ts: "attribute" } : null, videoUrl(options.url));
           },
           progress(positionS, durationS) {
             position = at(positionS);

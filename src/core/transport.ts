@@ -1,6 +1,6 @@
 import { WIRE_VERSION, type WireAdCookies, type WireClickIds, type WireEvent, type WireIdentify, type WirePageview } from "../_core/index.js";
 import { bytes, mergeClosest } from "./util";
-import { MAX_BODY_BYTES, MAX_EVENTS_PER_BATCH, MAX_PAGEVIEWS_PER_BATCH, SHRINK_VIDEO_RANGES } from "./constants";
+import { MAX_BODY_BYTES, MAX_EVENTS_PER_BATCH, MAX_PAGEVIEWS_PER_BATCH, SHRINK_VIDEO_RANGES, SHRINK_VIDEO_REWATCH_RANGES } from "./constants";
 
 /**
  * Batching and transport (parity TR-80…TR-82). Batches stay below
@@ -37,8 +37,19 @@ export type OutboxItem = {
 export function statePart(state: WirePageview, limit: number): string {
   let part = JSON.stringify(state);
   if (bytes(part) <= limit) return part;
-  for (const video of state.vids) mergeClosest(video.r, SHRINK_VIDEO_RANGES);
+  for (const video of state.vids) {
+    mergeClosest(video.r, SHRINK_VIDEO_RANGES);
+    if (video.rw) mergeClosest(video.rw, SHRINK_VIDEO_REWATCH_RANGES);
+  }
   part = JSON.stringify(state);
+  // frame-preview URLs are a convenience: dropped before any section
+  for (const video of state.vids) {
+    if (bytes(part) <= limit) break;
+    if (video.u) {
+      delete video.u;
+      part = JSON.stringify(state);
+    }
+  }
   const leastVisibleFirst = Object.keys(state.sec).sort((x, y) => (state.sec[x]?.[1] ?? 0) - (state.sec[y]?.[1] ?? 0));
   for (const name of leastVisibleFirst) {
     if (bytes(part) <= limit) break;

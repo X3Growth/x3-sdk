@@ -3119,6 +3119,10 @@ type WireVideo = {
     b: string;
     /** merged watched ranges in seconds (1 decimal), ≤ 40 */
     r: Array<[number, number]>;
+    /** merged ranges played again within this play (seek back, rewind), seconds, ≤ 20 (SDK ≥ 0.4) */
+    rw?: Array<[number, number]>;
+    /** absolute http(s) URL of the played file without query/hash, ≤ 300 chars, own hosts only (SDK ≥ 0.4) */
+    u?: string;
 };
 type WireEvent = {
     /** pageview id present in the same batch */
