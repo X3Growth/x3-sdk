@@ -5,6 +5,17 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] – 2026-10-19
+
+### Fixed
+- Live board: clicks reach the board again. The live plugin read the click's anchor during the click
+  itself, but the anchor is built only after the next paint (no INP cost), so every live click was dropped
+  and only the scroll band moved. The plugin now reads the anchor once it exists and computes „ms ago“
+  when the frame is sent.
+- Live board, grouped watch (0.2 Hz, no frames): clicks are sent with an early heartbeat (`c=` JSON, at
+  most 5, only where the clicks level allows) instead of not at all.
+- A click the core did not capture no longer repeats the previous click's anchor on the board.
+
 ## [1.0.0] – 2026-10-19
 
 First stable release: the public API of 0.5.0 (analytics, events, leads, experiments, React/Next/server helpers)

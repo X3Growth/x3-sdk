@@ -1,6 +1,6 @@
 {
   "name": "@x3growth/sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "X3 Growth Intelligence browser SDK: cookieless first-party analytics, custom events, identify, presets; React/Next adapters; server helper",
   "license": "MIT",
   "author": "X3 Growth",
