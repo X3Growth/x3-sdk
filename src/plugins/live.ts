@@ -5,7 +5,9 @@ import type { X3Plugin, X3PluginHost } from "../types";
  * x3.live.js (RECORDINGS-HEATMAPS §10.3, §20.F): heartbeat every 30 s on visible tabs while live is
  * on in the project ({hz, replay}); while somebody watches, 1 Hz frames (band, clicks, cursor only
  * where the pointer level allows) for visitors whose liveIndividual level allows it, 0.2 Hz band
- * updates via the heartbeat otherwise; stops after two answers with hz = 0.
+ * updates via the heartbeat otherwise. The heartbeat is the presence signal of „Besucher jetzt“
+ * (a session counts 90 s after its last signal), so an answer with hz = 0 (nobody watches) keeps
+ * the 30 s beat; only two failed requests in a row end it until the tab becomes visible again.
  */
 export function live(): X3Plugin {
   return {
@@ -21,6 +23,7 @@ export function live(): X3Plugin {
 function start(host: X3PluginHost): void {
   const b = host.behavior();
   let hz: HeartbeatResponse["hz"] = 0;
+  /** failed heartbeat requests in a row (network, HTTP error); hz = 0 is an answer, not a miss */
   let misses = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
   const clicks: Array<[string, number, number, number, number, number]> = [];
@@ -43,11 +46,16 @@ function start(host: X3PluginHost): void {
     try {
       const [top, bottom] = b.allowed("scroll") ? band() : [0, 0];
       // the path lets the first heartbeat place a new visitor before the first event batch arrives
-      hz = ((await (await fetch(`${api()}/v1/hb/${b.key()}?s=${pv.sid}&p=${pv.id}&cs=${b.cs()}${bottom ? `&b=${top},${bottom}` : ""}&u=${encodeURIComponent(pv.path)}&w=${innerWidth}`, { credentials: "omit" })).json()) as HeartbeatResponse).hz;
+      const response = await fetch(`${api()}/v1/hb/${b.key()}?s=${pv.sid}&p=${pv.id}&cs=${b.cs()}${bottom ? `&b=${top},${bottom}` : ""}&u=${encodeURIComponent(pv.path)}&w=${innerWidth}`, { credentials: "omit" });
+      // rate limited (429): try again on the next beat; any other error status counts as a miss
+      if (response.status === 429) hz = 0;
+      else if (!response.ok) throw new Error(String(response.status));
+      else hz = ((await response.json()) as HeartbeatResponse).hz;
+      misses = 0;
     } catch {
       hz = 0;
+      misses += 1;
     }
-    misses = hz ? 0 : misses + 1;
     clearInterval(timer);
     // 1 Hz: individual frames; 0.2 Hz: grouped density only – the heartbeat itself carries the band
     timer = hz === 1 ? setInterval(frame, 1e3) : hz ? setInterval(beat, 5e3) : undefined;

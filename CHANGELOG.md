@@ -5,6 +5,10 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `x3.live.js`: the live heartbeat no longer stops after two answers with `hz = 0` (nobody watching). It is the presence signal of „Besucher jetzt“, so a visitor who arrived before anyone opened Live stays counted; only two failed requests in a row (not a 429) end it until the tab is visible again. The browser script is served by the API, so sites pick it up without a package update.
+
 ## [0.2.0] – 2026-10-18
 
 ### Added
