@@ -5,6 +5,17 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Recordings keep what a page recorded when the recording stops (too noisy, too slow, page excluded on an
+  SPA navigation): the full snapshot and the events since the last packet are still uploaded – before, a
+  stop right after the snapshot discarded it and the page had no recording at all.
+- A slow full snapshot (above 150 ms, e.g. a heavy landing page on a phone) no longer ends the recording:
+  the snapshot is already paid for, so it is uploaded and the cheap incremental recording goes on (quiz
+  overlays and their steps reach the player). Slow devices take no further full snapshots (sparse-sampling
+  checkouts and SPA navigations stop the recording instead).
+- Sparse sampling: the ring buffer keeps the newest complete checkout (meta event + full snapshot) and
+  everything after it, instead of dropping the meta event and never trimming afterwards.
+
 ## [0.3.0] – 2026-10-18
 
 ### Added

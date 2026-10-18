@@ -63,9 +63,15 @@ export async function dedupeCss(events: Event[], known: Set<string>, ask: (hashe
 
 export type Chunker = {
   push(event: Event): void;
-  flush(final?: boolean): Promise<void>;
+  /** final: last packet of the pageview; keepalive (default = final): pagehide – synchronous gzip, ≤ 40 KB */
+  flush(final?: boolean, keepalive?: boolean): Promise<void>;
   stopped(): boolean;
-  stop(reason?: "off" | "revoke"): void;
+  /**
+   * off: no new events, but what was recorded before the stop still goes out as the last packet (the
+   * full snapshot of a page stopped as too_noisy/too_slow, the events since the last flush); drop: the
+   * server said off – nothing more is sent; revoke: the buffer is discarded and the revoke packet is sent
+   */
+  stop(reason?: "off" | "drop" | "revoke"): void;
   bytes(): number;
 };
 
@@ -74,6 +80,8 @@ export function createChunker(sender: Sender, options: { onOff: () => void; know
   let size = 0;
   let seq = 0;
   let total = 0;
+  // closed: no new events are taken; off: nothing is sent any more (server answer „off“, revoke sent)
+  let closed = false;
   let off = false;
   let busy = Promise.resolve();
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -115,7 +123,7 @@ export function createChunker(sender: Sender, options: { onOff: () => void; know
 
   const chunker: Chunker = {
     push(event) {
-      if (off) return;
+      if (off || closed) return;
       buffer.push(event);
       const full = event.type === 2;
       // a full snapshot flushes at once: no size estimate (a JSON.stringify of the whole DOM on the main thread)
@@ -123,18 +131,26 @@ export function createChunker(sender: Sender, options: { onOff: () => void; know
       if (full || size >= FLUSH_BYTES) void chunker.flush();
       else timer ??= setTimeout(() => void chunker.flush(), FLUSH_MS);
     },
-    flush(final = false) {
+    flush(final = false, keepalive = final) {
       if (timer) clearTimeout(timer);
       timer = null;
       const events = buffer;
       buffer = [];
       size = 0;
-      busy = busy.then(() => (off ? undefined : send(events, final ? X3R_FLAGS.final : 0, final))).catch(() => undefined);
+      busy = busy.then(() => (off ? undefined : send(events, final ? X3R_FLAGS.final : 0, keepalive))).catch(() => undefined);
       return busy;
     },
-    stopped: () => off,
+    stopped: () => off || closed,
     stop(reason = "off") {
       if (timer) clearTimeout(timer);
+      timer = null;
+      if (reason === "off") {
+        // a flush queued before the stop (the full snapshot flushes at once) and the rest of the buffer are sent:
+        // a stopped page keeps what it recorded – only new events are refused
+        if (!closed && !off && buffer.length > 0) void chunker.flush(true, false);
+        closed = true;
+        return;
+      }
       buffer = [];
       if (reason === "revoke" && !off) busy = busy.then(() => send([], X3R_FLAGS.revoke, true)).catch(() => undefined);
       off = true;

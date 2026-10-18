@@ -49,6 +49,8 @@ export function replay(): X3Plugin {
       let noisySeconds = 0;
       let bytes = 0;
       let reason: string | null = null;
+      // the full snapshot of this page load took longer than SNAPSHOT_ABORT_MS: no further full snapshots
+      let slow = false;
 
       const config = () => bridge.config();
       // test/internal sessions get the relaxed policy `t` when the project relaxes for tests only (AC); old cores have no test()
@@ -74,7 +76,8 @@ export function replay(): X3Plugin {
         reason = why;
         stopRecording?.();
         stopRecording = null;
-        chunker?.stop(revoke ? "revoke" : "off");
+        // what the page recorded before the stop is still uploaded (its full snapshot above all); a server „off“ sends nothing more
+        chunker?.stop(revoke ? "revoke" : why === "server_off" ? "drop" : "off");
         host.debug(`recording stopped: ${why}`);
       };
 
@@ -89,8 +92,7 @@ export function replay(): X3Plugin {
         if (bytes > BUFFER_LIMIT * 4) return stop("too_noisy");
         if (mode === "ring") {
           ring.push(transformed);
-          const cutoff = Date.now() - RING_MS;
-          while (ring.length && (ring[0] as RrwebEvent).timestamp < cutoff && (ring[0] as RrwebEvent).type !== 2) ring.shift();
+          trimRing(ring, Date.now() - RING_MS);
           return;
         }
         chunker?.push(transformed);
@@ -137,10 +139,14 @@ export function replay(): X3Plugin {
             sampling: { mousemove: 50, scroll: 150, input: "last", media: 800 },
             checkoutEveryNms: mode === "ring" ? 30_000 : undefined,
           }) ?? null;
-        // the snapshot cost as a User Timing entry (perf CI §16.2, RUM tools); emergency brake above 150 ms (§5.4)
+        // the snapshot cost as a User Timing entry (perf CI §16.2, RUM tools); brake above 150 ms (§5.4): the snapshot is
+        // already paid for, so it is uploaded and the cheap incremental recording goes on (quiz steps, overlays) – what a
+        // slow device is spared are further full snapshots (ring checkouts every 30 s, SPA navigations stop the recording)
         performance.measure("x3:snapshot", { start: t0 });
-        if (performance.now() - t0 > SNAPSHOT_ABORT_MS) return stop("too_slow");
+        slow = performance.now() - t0 > SNAPSHOT_ABORT_MS;
+        if (slow && mode === "ring") return stop("too_slow");
         bridge.heat(pv.id).perf = { ...bridge.heat(pv.id).perf, rec: 1 };
+        if (slow) host.debug("slow full snapshot: no further snapshots on this page load");
       };
 
       const second = setInterval(() => {
@@ -153,6 +159,8 @@ export function replay(): X3Plugin {
       host.hook({
         begin(pv) {
           if (stopRecording && chunker) {
+            // a slow device does not take another full snapshot: the previous pageview keeps its recording, this one has none
+            if (slow) return stop("too_slow");
             // SPA navigation: close the previous pageview's packets, new packets for the new one with a fresh snapshot
             void chunker.flush();
             chunker = newChunker(pv);
@@ -197,6 +205,21 @@ export function replay(): X3Plugin {
       return { flags: X3R_FLAGS, stop: (why: string) => stop(why) };
     },
   };
+}
+
+/**
+ * Ring buffer of sparse sampling: keeps the newest checkout (meta + full snapshot, every 30 s) that is not
+ * newer than the cutoff, and everything after it – an upload always starts with a complete page (meta
+ * first, then the snapshot), never with incremental events whose page is gone.
+ */
+export function trimRing(ring: RrwebEvent[], cutoff: number): void {
+  let keep = -1;
+  for (let index = 0; index < ring.length; index++) {
+    const event = ring[index] as RrwebEvent;
+    if (event.timestamp > cutoff) break;
+    if (event.type === 2) keep = index > 0 && (ring[index - 1] as RrwebEvent).type === 4 ? index - 1 : index;
+  }
+  if (keep > 0) ring.splice(0, keep);
 }
 
 function requestIdle(fn: () => void): void {
