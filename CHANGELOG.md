@@ -5,6 +5,18 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] – 2026-10-18
+
+### Added
+- Masking of recordings as a project setting: `x3.replay.js` applies the project's policy per category
+  (page texts, form inputs, choices, attributes, links, images, own mask/unmask/block selectors) from the
+  config – a change in X3 reaches the site with the next config fetch, no redeploy. Passwords, payment
+  fields (`cc-*`), one-time codes, hidden and file inputs are never recorded under any option.
+- Test and internal visits: when the project relaxes masking for them only, test traffic (test parameter,
+  `test: true`, `data-test`) is recorded with the relaxed rules – every other behavior signal still stops
+  for test traffic. `?x3_internal=1` marks a browser as internal (stored like the opt-out flag, undo with
+  `=0`); its visits count as test traffic.
+
 ### Fixed
 
 - `x3.live.js`: the live heartbeat no longer stops after two answers with `hz = 0` (nobody watching). It is the presence signal of „Besucher jetzt“, so a visitor who arrived before anyone opened Live stays counted; only two failed requests in a row (not a 429) end it until the tab is visible again. The browser script is served by the API, so sites pick it up without a package update.

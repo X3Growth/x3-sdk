@@ -65,7 +65,9 @@ function parseX3r(bytes) {
       vw: typeof h.vw === "number" ? Math.max(0, Math.min(1e4, Math.round(h.vw))) : 0,
       vh: typeof h.vh === "number" ? Math.max(0, Math.min(1e4, Math.round(h.vh))) : 0,
       ...cp ? { cp: { cmp: typeof cp.cmp === "string" ? cp.cmp.slice(0, 40) : null, purpose: typeof cp.purpose === "string" ? cp.purpose.slice(0, 60) : "recordings", ts: typeof cp.ts === "number" ? cp.ts : 0, id: typeof cp.id === "string" ? cp.id.slice(0, 80) : null } } : {},
-      ...h.ho === 1 ? { ho: 1 } : {}
+      ...h.ho === 1 ? { ho: 1 } : {},
+      ...h.t === 1 ? { t: 1 } : {},
+      ...typeof h.mv === "number" && Number.isInteger(h.mv) && h.mv >= 0 && h.mv < 1e6 ? { mv: h.mv } : {}
     },
     body: bytes.subarray(6 + length)
   };

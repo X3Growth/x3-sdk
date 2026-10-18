@@ -120,7 +120,7 @@ function compileClientConfig(config) {
   });
 }
 function storageKeys(prefix) {
-  return { session: `${prefix}tsid`, attribution: `${prefix}attribution`, notrack: `${prefix}notrack` };
+  return { session: `${prefix}tsid`, attribution: `${prefix}attribution`, notrack: `${prefix}notrack`, internal: `${prefix}internal` };
 }
 export {
   DEFAULT_EXCLUDE_PATHS,

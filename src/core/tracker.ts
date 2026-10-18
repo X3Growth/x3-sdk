@@ -224,7 +224,7 @@ export function createTracker(env: TrackerEnv): Tracker {
   /** explicit denial seen (consent journeys plugin deletes its cookies) */
   let denied = false;
   // recordings/heatmaps/live gate + anchor capture (RECORDINGS-HEATMAPS §20.B/C)
-  const behavior = createBehavior({ config: () => cfg?.behavior, consent: () => consent, denied: () => denied || consentLocked, stopped: () => !running || testTraffic || gpcOn(), request: (name) => requestPlugin(name), key: () => key });
+  const behavior = createBehavior({ config: () => cfg?.behavior, consent: () => consent, denied: () => denied || consentLocked, hard: () => !running || gpcOn(), test: () => testTraffic, request: (name) => requestPlugin(name), key: () => key });
   hooks.push({ consent: () => behavior.changed() });
 
   const debug = (message: string) => {
@@ -1056,6 +1056,11 @@ export function createTracker(env: TrackerEnv): Tracker {
     if (notrack === "1") storageSet("localStorage", keys.notrack, "1");
     if (notrack === "0") storageSet("localStorage", keys.notrack, null);
     if (storageGet("localStorage", keys.notrack) === "1") return block("opted out");
+    // device marked internal (?x3_internal=1, undo with =0): its visits count as test traffic (AC: relaxed masking for internal sessions)
+    const internal = new URLSearchParams(window.location.search).get("x3_internal");
+    if (internal === "1") storageSet("localStorage", keys.internal, "1");
+    if (internal === "0") storageSet("localStorage", keys.internal, null);
+    if (storageGet("localStorage", keys.internal) === "1") testTraffic = true;
     if ((options?.respectDoNotTrack || cfg.consent.respectDoNotTrack) && navigator.doNotTrack === "1") return block("Do Not Track");
     if (cfg.consent.mode === "require" && !consent) return block("waiting for consent");
     const doc = document as Document & { prerendering?: boolean };

@@ -118,6 +118,10 @@ function scrubLinkUrl(value) {
   const path = trimmed.startsWith("?") ? "" : redactLinkPath(url.pathname);
   return `${origin}${path}${kept.length > 0 ? `?${kept.join("&")}` : ""}${hash}`;
 }
+function maskLink(value, option) {
+  if (option === "scrubbed") return scrubLinkUrl(value);
+  return option === "pii" ? scrubPii(value) : value;
+}
 export {
   CHOICE_STATE_ATTRIBUTES,
   CONTENTEDITABLE_SELECTOR,
@@ -133,6 +137,7 @@ export {
   containsPii,
   isEditable,
   isScriptUrl,
+  maskLink,
   maskShape,
   scrubLinkUrl,
   scrubPii

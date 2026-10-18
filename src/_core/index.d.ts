@@ -2661,6 +2661,41 @@ declare const CAPTURE_MODES: readonly ["consent_only", "until_rejected", "always
 type CaptureMode = (typeof CAPTURE_MODES)[number];
 
 /**
+ * Masking as a project setting (BUILD-ADDENDA AC): per category the operator chooses how strictly
+ * recordings are masked. Pure and zod-free: the SDK recorder, the ingest sanitizer (second line of
+ * defence), the re-mask run, the settings API/MCP and the dashboard use the same functions.
+ *
+ * - Options are listed strictest first; a lower index is stricter.
+ * - X3 recommends a value per category (marketing projects: page texts visible with PII filter =
+ *   the former profile „balanced“; sector presets: shape only = „strict“). A value less strict than
+ *   the recommendation needs an admin acknowledgement (name, time, text) like the capture levels (P).
+ * - `relax: "test"` applies the configured (relaxed) values only to test/internal sessions (the
+ *   project's test parameter, `test: true` in the snippet or a device marked internal); every other
+ *   session gets the stricter of configured and recommended.
+ * - Never switchable (floor): passwords, payment fields (autocomplete cc-*), one-time codes, hidden
+ *   and file inputs, contenteditable and `address`/[data-x3-mask] stay masked or unrecorded in every
+ *   option, also for test sessions. The health preset locks every relaxation (Art. 9 GDPR).
+ * Zero top-level side effects (the recorder bundles this module); labels and risk texts: ./mask-labels.
+ */
+declare const MASK_CATEGORIES: readonly ["text", "inputs", "choices", "attributes", "links", "images"];
+type MaskCategory = (typeof MASK_CATEGORIES)[number];
+declare const MASK_OPTIONS: {
+    readonly text: readonly ["shape", "pii", "visible"];
+    readonly inputs: readonly ["masked", "pii", "visible"];
+    readonly choices: readonly ["masked", "visible"];
+    readonly attributes: readonly ["shape", "pii", "visible"];
+    readonly links: readonly ["scrubbed", "pii", "visible"];
+    readonly images: readonly ["placeholder", "visible"];
+};
+type MaskPolicy = {
+    [K in MaskCategory]: (typeof MASK_OPTIONS)[K][number];
+};
+/** Whether an input's value may be recorded at all (floor), from its attributes */
+declare function valueRecordable(attributes: Record<string, unknown>): boolean;
+/** Input types whose value is a choice (the choices category decides), not a typed text */
+declare const CHOICE_INPUT_TYPES: Set<string>;
+
+/**
  * Behavior part of the client config (`ClientConfig.behavior`, GET /v1/c/{pk} and the inline
  * `window.__x3cfg`): what the SDK may capture, in which consent state, and how to record.
  * Levels are already capped (mode, hard limits, preset), so the SDK's gate is a lookup.
@@ -2698,10 +2733,21 @@ type BehaviorClientConfig = {
             rate: number;
             active: boolean;
         };
+        /**
+         * Masking (BUILD-ADDENDA AC). `profile`, `unmask`, `block` are what recorders before AC read;
+         * `p` is the policy of ordinary sessions, `t` the relaxed policy of test/internal sessions
+         * (null = same as `p`), `mask` own selectors masked to their shape, `v` the rules version,
+         * `test` = test/internal sessions are recorded (relax "test"; otherwise test traffic records nothing).
+         */
         mask: {
             profile: "strict" | "balanced";
             unmask: string[];
             block: string[];
+            mask: string[];
+            p: MaskPolicy;
+            t: MaskPolicy | null;
+            v: number;
+            test: boolean;
         };
         rules: {
             excludePaths: string[];
@@ -2798,6 +2844,7 @@ declare function storageKeys(prefix: string): {
     session: string;
     attribution: string;
     notrack: string;
+    internal: string;
 };
 
 declare function normalizeHost(host: string | null | undefined): string;
@@ -3203,11 +3250,8 @@ type AttributeRule = "delete" | "constant" | "text" | "aria" | "link" | "keep";
  * one fixed value under strict (lengths never tell „true“ from „false“), PII-scrubbed under balanced.
  */
 declare function attributeRule(name: string, value: unknown, choice: boolean | (() => boolean)): AttributeRule;
-/**
- * Link URL as recorded (§4.2): mailto:/tel: targets masked, query removed except utm_* and click
- * ids, e-mail/token/id path segments → ":id", only short in-page anchors kept. Idempotent.
- */
-declare function scrubLinkUrl(value: string): string;
+/** Link target under the links option (AC): scrubbed (default), visible with PII filter, or as it is */
+declare function maskLink(value: string, option: "scrubbed" | "pii" | "visible"): string;
 
 declare const X3R_FLAGS: {
     /** packet starts with a full snapshot */
@@ -3254,8 +3298,12 @@ type X3rHeader = {
     };
     /** holdout pageview (no recording, perf only) */
     ho?: 0 | 1;
+    /** test/internal session (test parameter, `test: true`, device marked internal): the relaxed masking of `relax: "test"` may apply (AC) */
+    t?: 1;
+    /** version of the masking rules the recorder applied (AC) */
+    mv?: number;
 };
 declare function encodeX3r(header: X3rHeader, gzipped: Uint8Array): Uint8Array;
 
-export { CHOICE_CONTAINER_SELECTOR, CLICK_ID_KEYS, CLIENT_GEO_HEADER, CONTENTEDITABLE_SELECTOR, EVENT_NAME_PATTERN, ID_PATTERN, IMMEDIATE_CLICK_KINDS, INTERACTIVE_SELECTOR, KEY_PATTERN, LANG_PATTERN, MASKED_VALUE, MASK_ALWAYS_SELECTOR, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, X3R_FLAGS, attributeRule, attributionFromParams, buildAnchor, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, clickTarget, clientSamples, compileHostMatcher, compileMatcher, compileMatchers, elementText, encodeAttention, encodeScrollTimeline, encodeX3r, formatClientGeoHeader, hashIdentifiers, inFixed, isSafeRegex, isScriptUrl, maskShape, normalizeHost, normalizeVideoId, notFoundPage, pathExcluded, readGeo, scrubLinkUrl, scrubPii, sessionFraction, slugify, storageKeys, structureHash, trimProps, validFbCookie };
-export type { Attribution, AttributionOrigin, BehaviorClientConfig, BookingAdapter, CaptureSignal, ClickKind, ClientConfig, ClientJourneys, CompiledTrackingConfig, ConversionSource, HeartbeatResponse, NavType, NotFoundVia, PropValue, Props, ScrollMarks, ScrollSample, TrackingConfig, VideoFormat, WireAdCookies, WireClickHeat, WireClickIds, WireEvent, WireIdentify, WirePageview, WirePageviewHeat, WireSection, WireVideo, X3rHeader };
+export { CHOICE_CONTAINER_SELECTOR, CHOICE_INPUT_TYPES, CLICK_ID_KEYS, CLIENT_GEO_HEADER, CONTENTEDITABLE_SELECTOR, EVENT_NAME_PATTERN, ID_PATTERN, IMMEDIATE_CLICK_KINDS, INTERACTIVE_SELECTOR, KEY_PATTERN, LANG_PATTERN, MASKED_VALUE, MASK_ALWAYS_SELECTOR, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, X3R_FLAGS, attributeRule, attributionFromParams, buildAnchor, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, clickTarget, clientSamples, compileHostMatcher, compileMatcher, compileMatchers, elementText, encodeAttention, encodeScrollTimeline, encodeX3r, formatClientGeoHeader, hashIdentifiers, inFixed, isSafeRegex, isScriptUrl, maskLink, maskShape, normalizeHost, normalizeVideoId, notFoundPage, pathExcluded, readGeo, scrubPii, sessionFraction, slugify, storageKeys, structureHash, trimProps, validFbCookie, valueRecordable };
+export type { Attribution, AttributionOrigin, BehaviorClientConfig, BookingAdapter, CaptureSignal, ClickKind, ClientConfig, ClientJourneys, CompiledTrackingConfig, ConversionSource, HeartbeatResponse, MaskPolicy, NavType, NotFoundVia, PropValue, Props, ScrollMarks, ScrollSample, TrackingConfig, VideoFormat, WireAdCookies, WireClickHeat, WireClickIds, WireEvent, WireIdentify, WirePageview, WirePageviewHeat, WireSection, WireVideo, X3rHeader };

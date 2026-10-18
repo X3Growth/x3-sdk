@@ -3,7 +3,7 @@ import { X3R_FLAGS } from "../../_core/index.js";
 import type { TrackedPageview, X3Plugin, X3PluginHost } from "../../types";
 import { createChunker, preloadSyncGzip, setFflateLoader, type Chunker } from "./chunker";
 import { BUFFER_LIMIT, evaluateGate, MUTATION_LIMIT_PER_S, predictSnapshotMs, PREDICTION_LIMIT_MS, SNAPSHOT_ABORT_MS } from "./gate";
-import { blockSelector, maskText, transformEvent, type MaskOptions } from "./mask";
+import { blockSelector, maskInput, maskText, transformEvent, type MaskOptions } from "./mask";
 
 /**
  * x3.replay.js (RECORDINGS-HEATMAPS §5.4–5.6, §20.C): @rrweb/record 2.1.7 with masking transforms,
@@ -51,7 +51,13 @@ export function replay(): X3Plugin {
       let reason: string | null = null;
 
       const config = () => bridge.config();
-      const mask = (): MaskOptions => ({ profile: config()?.replay.mask.profile ?? "strict", unmask: config()?.replay.mask.unmask ?? [], block: config()?.replay.mask.block ?? [] });
+      // test/internal sessions get the relaxed policy `t` when the project relaxes for tests only (AC); old cores have no test()
+      const relaxed = () => !!(bridge.test?.() && config()?.replay.mask.t);
+      const mask = (): MaskOptions => {
+        const m = config()?.replay.mask;
+        const p = (relaxed() ? m?.t : m?.p) ?? undefined;
+        return { profile: p ? (p.text === "shape" ? "strict" : "balanced") : (m?.profile ?? "strict"), unmask: m?.unmask ?? [], block: m?.block ?? [], mask: m?.mask ?? [], p };
+      };
 
       const newChunker = (pv: TrackedPageview) =>
         createChunker(
@@ -59,7 +65,7 @@ export function replay(): X3Plugin {
             host: host.apiHost().replace(/\/$/, ""),
             key: bridge.key(),
             secret,
-            header: () => ({ sid: pv.sid, pv: pv.id, m: mask().profile === "balanced" ? "b" : "s", cs: bridge.cs(), page: pv.path, vw: innerWidth, vh: innerHeight, ...(bridge.cs()[1] === "g" && bridge.cp ? { cp: { cmp: bridge.cp.cmp, purpose: "recordings", ts: bridge.cp.ts } } : {}) }),
+            header: () => ({ sid: pv.sid, pv: pv.id, m: mask().profile === "balanced" ? "b" : "s", ...(relaxed() ? { t: 1 as const } : {}), mv: config()?.replay.mask.v ?? 0, cs: bridge.cs(), page: pv.path, vw: innerWidth, vh: innerHeight, ...(bridge.cs()[1] === "g" && bridge.cp ? { cp: { cmp: bridge.cp.cmp, purpose: "recordings", ts: bridge.cp.ts } } : {}) }),
           },
           { known, onOff: () => stop("server_off") },
         );
@@ -118,7 +124,7 @@ export function replay(): X3Plugin {
           record({
             emit: (event) => emit(event as RrwebEvent),
             maskAllInputs: true,
-            maskInputFn: () => "••••",
+            maskInputFn: (text, element) => maskInput(text, element, mask()),
             maskTextSelector: "*",
             maskTextFn: (text, element) => maskText(text, element, mask()),
             blockSelector: blockSelector(mask()),

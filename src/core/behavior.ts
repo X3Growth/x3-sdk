@@ -29,8 +29,10 @@ export type BehaviorBridge = {
   fin?: (item: PendingClick) => void;
   /** anchor builder of the heat plugin (x3.signals.js uses it instead of bundling its own) */
   anchor?: (element: Element) => string | null;
-  /** hard stop: opt-out, GPC, test traffic, tracking halted – every behavior signal ends */
+  /** hard stop: opt-out, GPC, test traffic, tracking halted – every behavior signal ends (recordings of test traffic: see test) */
   stopped(): boolean;
+  /** test/internal session (test parameter, `test: true`, device marked internal); recorded only when the project relaxes masking for tests (AC) */
+  test?(): boolean;
   /** listeners for state changes (consent, stop) */
   on: Array<() => void>;
   /** sha256 hex of the device secret (privacy center proof), set by the heat plugin */
@@ -45,16 +47,20 @@ export type BehaviorBridge = {
 /** x3.consent("granted" | "denied") or x3.consent({ analytics?, recordings? }) – the purposes are separate (§5.4 step 3) */
 export type ConsentInput = "granted" | "denied" | { analytics?: boolean; recordings?: boolean };
 
-export function createBehavior(deps: { config(): BehaviorClientConfig | null | undefined; consent(): boolean; denied(): boolean; stopped(): boolean; request(name: "heat" | "live" | "signals" | "replay" | "capture"): void; key(): string }) {
+export function createBehavior(deps: { config(): BehaviorClientConfig | null | undefined; consent(): boolean; denied(): boolean; hard(): boolean; test(): boolean; request(name: "heat" | "live" | "signals" | "replay" | "capture"): void; key(): string }) {
   let recordings: Cs = "p";
   let armed: Omit<PendingClick, "e"> | null = null;
   const states: Record<string, WirePageviewHeat> = {};
   const analytics = (): Cs => (deps.denied() ? "d" : deps.consent() ? "g" : "p");
   const rec = (): Cs => (analytics() === "d" ? "d" : recordings);
+  const stopped = () => deps.hard() || deps.test();
   const allowed = (signal: CaptureSignal): boolean => {
-    const gate = deps.config()?.gate[signal];
+    const cfg = deps.config();
+    const gate = cfg?.gate[signal];
+    // test traffic stops every signal, except recordings when the project relaxes masking for test/internal sessions (AC); opt-out/GPC always stop
+    const stop = signal === "recording" && cfg?.replay.mask.test ? deps.hard() : stopped();
     // granted needs ≥ consent, pending ≥ until_rejected, rejected = always (levels precomputed by the server)
-    return !!gate && !deps.stopped() && gate[0] > "gpd".indexOf(gate[1] ? rec() : analytics());
+    return !!gate && !stop && gate[0] > "gpd".indexOf(gate[1] ? rec() : analytics());
   };
   /** clicks still waiting for their anchor are finished now (before every beacon) */
   const finalize = () => {
@@ -63,11 +69,11 @@ export function createBehavior(deps: { config(): BehaviorClientConfig | null | u
   const changed = () => {
     const cfg = deps.config();
     // while stopped nothing new loads; the listeners still run so running plugins end at once (opt-out, GPC)
-    if (!deps.stopped()) {
+    if (!stopped()) {
       if (cfg?.heat.enabled && (allowed("clicks") || allowed("scroll"))) (["heat", "signals"] as const).forEach(deps.request);
       if (cfg?.live.enabled) deps.request("live");
-      if (cfg?.replay.enabled && cfg.replay.allow && allowed("recording")) deps.request("replay");
     }
+    if (cfg?.replay.enabled && cfg.replay.allow && allowed("recording")) deps.request("replay");
     // owner capture mode (signed link) works on test traffic too
     if (/[?&]x3_capture=/.test(location.search)) deps.request("capture");
     bridge.on.forEach((fn) => fn());
@@ -75,7 +81,8 @@ export function createBehavior(deps: { config(): BehaviorClientConfig | null | u
   const bridge: BehaviorBridge = {
     cs: () => analytics() + rec(),
     allowed,
-    stopped: deps.stopped,
+    stopped,
+    test: deps.test,
     config: deps.config,
     setRecordings: (state) => {
       recordings = state;
