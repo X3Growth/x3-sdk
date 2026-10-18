@@ -6,6 +6,8 @@ export { CLICK_ID_KEYS, attributionFromParams, cleanAttribution } from "./attrib
 export { CLIENT_GEO_HEADER, formatClientGeoHeader, readGeo } from "./behavior/geo.js";
 export { CONTENTEDITABLE_SELECTOR, MASKED_VALUE, MASK_ALWAYS_SELECTOR, attributeRule, isScriptUrl, maskLink, maskShape, scrubPii } from "./behavior/mask.js";
 export { EVENT_NAME_PATTERN, ID_PATTERN, KEY_PATTERN, LANG_PATTERN, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN } from "./patterns.js";
+export { EXPERIMENTS_STALE_AFTER_S } from "./experiments/types.js";
+export { FORCE_PARAM, FORCE_TOKEN_PARAM, assignExperiment, clientTargetingMatches, parseForceParam } from "./experiments/assign.js";
 export { IMMEDIATE_CLICK_KINDS, builtInEvent, trimProps } from "./events.js";
 export { NOT_FOUND_META_NAME } from "./parity.js";
 export { SCROLL_MILESTONES, WIRE_VERSION } from "./constants.js";

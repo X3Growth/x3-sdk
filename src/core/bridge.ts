@@ -107,6 +107,45 @@ export function bridgeToScriptTag(local: Tracker): Tracker {
     return { play: forward("play"), progress: forward("progress"), pause: forward("pause"), seek: forward("seek"), ended: forward("ended") };
   };
 
+  /** synchronous calls with a result: the booted script tracker answers, else the local one (control while unknown) */
+  const syncCall =
+    <T>(path: string) =>
+    (...args: unknown[]): T => {
+      const direct = remote() ? method(path) : null;
+      return (direct ? direct(...args) : localFn(path)(...args)) as T;
+    };
+
+  /** experiments: listeners and ready() follow the script tracker once it booted */
+  const experiments: Tracker["experiments"] = {
+    ready: (timeoutMs) => {
+      if (!remote()) return local.experiments.ready(timeoutMs);
+      return new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, timeoutMs ?? 300);
+        whenBooted((x) => {
+          const ready = (x as X3Api | null)?.experiments?.ready;
+          if (!ready) return resolve();
+          void ready(timeoutMs).then(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      });
+    },
+    onChange: (listener) => {
+      if (!remote()) return local.experiments.onChange(listener);
+      let off: (() => void) | null = null;
+      let cancelled = false;
+      whenBooted((x) => {
+        if (!cancelled) off = (x as X3Api | null)?.experiments?.onChange(listener) ?? null;
+      });
+      return () => {
+        cancelled = true;
+        off?.();
+      };
+    },
+    all: () => syncCall<Record<string, string>>("experiments.all")(),
+  };
+
   const bridged: Tracker = {
     ...local,
     init: (options) => {
@@ -119,6 +158,7 @@ export function bridgeToScriptTag(local: Tracker): Tracker {
     page: voidCall("page") as Tracker["page"],
     identify: asyncCall<void>("identify", undefined) as Tracker["identify"],
     conversion: asyncCall<string | null>("conversion", null) as Tracker["conversion"],
+    lead: asyncCall<boolean>("lead", false) as Tracker["lead"],
     consent: voidCall("consent") as Tracker["consent"],
     flush: voidCall("flush") as Tracker["flush"],
     getIds: () => {
@@ -127,6 +167,10 @@ export function bridgeToScriptTag(local: Tracker): Tracker {
     },
     optOut: voidCall("optOut") as Tracker["optOut"],
     optIn: voidCall("optIn") as Tracker["optIn"],
+    variant: syncCall<string>("variant") as Tracker["variant"],
+    experiment: syncCall<ReturnType<Tracker["experiment"]>>("experiment") as Tracker["experiment"],
+    expose: voidCall("expose") as Tracker["expose"],
+    experiments,
     quiz: {
       view: voidCall("quiz.view") as Tracker["quiz"]["view"],
       answer: voidCall("quiz.answer") as Tracker["quiz"]["answer"],

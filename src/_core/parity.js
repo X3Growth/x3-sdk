@@ -2,8 +2,8 @@
 // Only the part of the core the SDK uses; changes are made upstream and synced.
 const RUN_STATES = ["queued", "running", "ok", "partial", "error", "skipped"];
 const RUN_ACTIVE_STATES = ["queued", "running"];
-const ANNOTATION_KINDS = ["manual", "deploy", "campaign_start", "campaign_stop", "campaign_budget", "setting_change", "ad_status"];
-const AUTOMATIC_ANNOTATION_KINDS = ["deploy", "campaign_start", "campaign_stop", "campaign_budget", "setting_change", "ad_status"];
+const ANNOTATION_KINDS = ["manual", "deploy", "campaign_start", "campaign_stop", "campaign_budget", "setting_change", "ad_status", "experiment"];
+const AUTOMATIC_ANNOTATION_KINDS = ["deploy", "campaign_start", "campaign_stop", "campaign_budget", "setting_change", "ad_status", "experiment"];
 const ANNOTATION_SOURCES = ["dashboard", "api", "mcp", "webhook", "ads_sync", "system"];
 const ANNOTATION_SCOPES = ["project", "org"];
 const ANNOTATED_SETTINGS = ["preset", "attribution_model", "goals", "relevance", "tracking_config", "budget", "consent_mode", "project_mode", "auto_capture"];
@@ -25,7 +25,8 @@ const ANNOTATION_KIND_LABELS = {
   campaign_stop: { de: "Kampagne gestoppt", en: "Campaign stopped" },
   campaign_budget: { de: "Budget ge\xE4ndert", en: "Budget changed" },
   setting_change: { de: "Einstellung ge\xE4ndert", en: "Setting changed" },
-  ad_status: { de: "Status ge\xE4ndert", en: "Status changed" }
+  ad_status: { de: "Status ge\xE4ndert", en: "Status changed" },
+  experiment: { de: "Experiment", en: "Experiment" }
 };
 const DEPLOY_WEBHOOK_TOKEN_PATTERN = /^x3d_[0-9A-Za-z]{32}$/;
 const ANNOTATED_SETTING_LABELS = {

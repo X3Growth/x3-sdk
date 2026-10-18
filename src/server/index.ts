@@ -13,6 +13,9 @@
  * The bundle is self-contained (no zod, no @3x/core/client at runtime).
  */
 import { validFbCookie, type ConversionSource } from "../_core/index.js";
+import { fetchAssignments, withLeadRetry, type AssignRequest, type X3Assignments } from "./experiments";
+
+export { fetchAssignments, type AssignRequest, type X3Assignment, type X3Assignments } from "./experiments";
 
 /** re-exported so declaration files of consumers can name it (TS2742) */
 export type { ConversionSource };
@@ -84,6 +87,10 @@ export type X3LeadInput = {
   spam?: boolean;
   attribution?: Record<string, string>;
   isTest?: boolean;
+  /** CRM routing: false = never push · connection ids, aliases („sales“) or CRM names („hubspot“); omitted = routing rules, else every connected CRM */
+  crm?: false | string[];
+  /** ms (0–5000) to wait for the CRM result in the response (e.g. for a link in a Slack message); default 0 = background */
+  crmWait?: number;
   /** also record a conversion of this definition */
   conversion?: X3RequestContext & { definition: string; eventId?: string; value?: number };
 };
@@ -153,7 +160,12 @@ export type X3ConversionResult =
   | { result: "created" | "duplicate"; conversion: ConversionRow }
   | { result: "ambiguous"; candidates: Array<Record<string, unknown> & { sessionId: string }> }
   | { result: "dry_run"; wouldStore: Record<string, unknown> };
-export type X3LeadResult = { lead: Record<string, unknown> & { id: string }; conversionId: string | null };
+export type X3LeadResult = {
+  lead: Record<string, unknown> & { id: string };
+  conversionId: string | null;
+  /** one entry per routed CRM (status „done“ with the record url when crmWait was long enough) */
+  crm?: Array<{ connection: string; provider: string; status: "queued" | "held" | "done" | "needs_review" | "skipped" | "failed"; url: string | null; decision: string | null }>;
+};
 
 export type X3ServerOptions = {
   /** API origin, e.g. https://api.3x.example (no /v1) */
@@ -165,6 +177,10 @@ export type X3ServerOptions = {
   fetch?: typeof fetch;
   /** per request (default 10 s) */
   timeoutMs?: number;
+  /** experiments.assign: the project's publishable key (pk_3x_…) */
+  publishableKey?: string;
+  /** experiments.assign: a secret key with scope ingest:proxy (default: apiKey) */
+  proxyKey?: string;
 };
 
 /** RFC 9457 problem returned by the API */
@@ -264,6 +280,29 @@ export function createX3Server(options: X3ServerOptions) {
       /** records a lead (optionally with a conversion); contact data is hashed by the API */
       async create(input: X3LeadInput, idempotencyKey?: string): Promise<X3LeadResult> {
         return request("POST", await projectPath("/leads"), input, idempotencyKey ?? randomId());
+      },
+      /**
+       * Follow-up free text from the visitor for an existing lead (quiz step „Möchtest Du noch etwas
+       * ergänzen?“): by lead id or by the Idempotency-Key used for leads.create – works while the
+       * create is still in flight (retries 404/409 for up to 60 s). Never a new lead or conversion;
+       * the text is personal data (readable with leads:read only). Needs leads:write.
+       */
+      async addNote(ref: { leadId: string } | { idempotencyKey: string }, text: string): Promise<{ id: string; leadId: string }> {
+        const path = await projectPath("/leads/notes");
+        return withLeadRetry(
+          () => request<{ id: string; leadId: string }>("POST", path, { ...ref, text }),
+          (error) => error instanceof X3ServerError && (error.status === 404 || error.status === 409),
+        );
+      },
+    },
+    experiments: {
+      /**
+       * Server-side assignment (prices/offers, server-rendered arms): the visitor's IP/UA (+ consented
+       * x3_vid) → arms of the running experiments. Answers {} after 150 ms or on any error (= control).
+       */
+      async assign(input: AssignRequest): Promise<X3Assignments> {
+        if (!options.publishableKey) throw new TypeError("experiments.assign: createX3Server({ publishableKey }) is required");
+        return fetchAssignments({ apiOrigin: base, publishableKey: options.publishableKey, proxyKey: options.proxyKey ?? options.apiKey, request: input, fetch: doFetch });
       },
     },
     purchases: { create: purchase, refund },

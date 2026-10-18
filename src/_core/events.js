@@ -72,6 +72,20 @@ const BUILT_IN_EVENTS = [
       items: { type: "int", min: 0, max: 1e4, optional: true }
     },
     { preset: "shop", dedupe: "name_props", flush: true }
+  ),
+  // experiment exposure (BUILD-ADDENDA W): sent by x3.variant()/x3.expose(), at most once per pageview and key
+  def(
+    "experiment_view",
+    {
+      k: { type: "string", max: 48, pattern: "^[a-z][a-z0-9-]{2,47}$" },
+      a: { type: "string", max: 24, pattern: "^[a-z][a-z0-9_-]{0,23}$" },
+      r: { type: "int", min: 0, max: 2e9 },
+      u: { type: "enum", values: ["pageload", "day", "visitor"] },
+      /** pageload unit only: the SDK's in-memory page-load id (the server re-derives the bucket from it) */
+      pl: { type: "string", max: 36, pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", optional: true }
+    },
+    // dedupe per pageview and key happens in the experiments plugin (a time window would drop the next page's exposure)
+    { preset: "experiments", flush: true, dedupe: "none" }
   )
 ];
 const BUILT_IN_EVENT_NAMES = BUILT_IN_EVENTS.map((event) => event.name);
@@ -198,7 +212,8 @@ const EVENT_DESCRIPTIONS = {
   booking: "A meeting was booked (booking adapters: postMessage embeds, window events, thank-you pages, Calendly).",
   not_found: "A not-found (404) page was shown (auto-capture): the requested canonical path and how it was recognized (marker attribute, x3-status meta tag or title rule). The pageview itself is reported under the project's notFound path.",
   funnel_step: "Generic funnel step reached (funnel key + step key) for funnels driven from code.",
-  purchase: "A purchase was completed (shop mode): value \u2265 0, ISO currency, order_id (deduplication \u2013 the same order id is counted once) and optionally the number of items. Every purchase is its own conversion; repeat purchases of the same person count."
+  purchase: "A purchase was completed (shop mode): value \u2265 0, ISO currency, order_id (deduplication \u2013 the same order id is counted once) and optionally the number of items. Every purchase is its own conversion; repeat purchases of the same person count.",
+  experiment_view: "A visitor saw an experiment variant (k = flag key, a = arm, r = config revision, u = unit kind, pl = page-load id of pageload units); sent by x3.variant()/x3.expose(), at most once per pageview and key."
 };
 function stringRule(spec) {
   return spec.pattern ? "pattern" : spec.privacy ?? "identifier";

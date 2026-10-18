@@ -131,6 +131,70 @@ declare function compileMatchers(rules: readonly PathRule[]): Matcher;
  */
 declare function compileHostMatcher(patterns: readonly string[]): Matcher;
 
+/** Statuses shipped in the public client config */
+declare const PUBLIC_EXPERIMENT_STATUSES: readonly ["scheduled", "running", "paused", "cooldown", "decided", "rolled_out"];
+type PublicExperimentStatus = (typeof PUBLIC_EXPERIMENT_STATUSES)[number];
+declare const EXPERIMENT_UNITS: readonly ["pageload", "day", "visitor"];
+type ExperimentUnit = (typeof EXPERIMENT_UNITS)[number];
+/** Why the SDK / assign endpoint returned an arm */
+declare const ASSIGN_REASONS: readonly ["assigned", "override", "rolled_out", "not_running", "unknown_key", "targeting", "coverage", "no_consent", "unit_unavailable", "pending", "stopped_arm"];
+type AssignReason = (typeof ASSIGN_REASONS)[number];
+type JsonValue = string | number | boolean | null | JsonValue[] | {
+    [key: string]: JsonValue;
+};
+/** Client-evaluable plus server-only targeting (part 2 „Zielgruppe“) */
+type ExperimentTargeting = {
+    /** path rules (exact/prefix/glob) – client-evaluable */
+    paths?: Array<{
+        kind: "exact" | "prefix" | "glob";
+        value: string;
+    }>;
+    hosts?: string[];
+    langs?: string[];
+    /** page group keys (server-evaluable at exposure verification; the client treats them as „match“) */
+    groups?: string[];
+    /** server-only attributes resolved by /v1/x */
+    channels?: string[];
+    devices?: Array<"desktop" | "mobile" | "tablet">;
+    countries?: string[];
+    /** questionnaire ids (quiz) – descriptive targeting, checked at exposure */
+    questionnaires?: string[];
+};
+/** One entry of ClientConfig.experiments.list (public – never names, metrics or results) */
+type ClientExperiment = {
+    key: string;
+    seed: string;
+    status: PublicExperimentStatus;
+    scope: ExperimentUnit;
+    /** r = bucket range [from, to) over 0–10000; null = arm receives no traffic (harm-stopped) */
+    arms: Array<{
+        k: string;
+        r: [number, number] | null;
+        p?: Record<string, JsonValue>;
+    }>;
+    /** coverage 0–10000 */
+    cov: number;
+    layer?: {
+        seed: string;
+        r: [number, number];
+    };
+    tgt?: ExperimentTargeting;
+    /** arm served to everyone when rolled_out */
+    rollout?: string;
+};
+type ClientExperiments = {
+    rev: number;
+    /** generation time (epoch seconds) – inline configs older than 120 s defer to /v1/x (C18) */
+    at: number;
+    retired?: Array<{
+        k: string;
+        o: string;
+    }>;
+    list: ClientExperiment[];
+};
+/** Inline configs older than this are stale for experiments (C18) */
+declare const EXPERIMENTS_STALE_AFTER_S = 120;
+
 /** How a not-found page was recognized (event not_found.via) */
 declare const NOT_FOUND_VIA: readonly ["marker", "meta", "title"];
 type NotFoundVia = (typeof NOT_FOUND_VIA)[number];
@@ -2832,6 +2896,11 @@ type ClientConfig = {
     autoCapture?: AutoCaptureConfig;
     /** recordings/heatmaps/live capture scope (RECORDINGS-HEATMAPS §20.B); absent in configs of older APIs → only the core signals */
     behavior?: BehaviorClientConfig;
+    /**
+     * Experiments (BUILD-ADDENDA W, part 7 §7.1): public flag entries only – never names, metrics or
+     * results. Added by the API when serving the config; absent → every variant() call returns control.
+     */
+    experiments?: ClientExperiments;
 };
 type ClientJourneys = {
     visitorId: boolean;
@@ -2924,7 +2993,7 @@ type PropSpec = {
     optional?: boolean;
 };
 type DedupeMode = "none" | "name" | "name_props";
-type EventPreset = "core" | "forms" | "video" | "quiz" | "cta" | "messaging" | "calculator" | "booking" | "funnel" | "shop";
+type EventPreset = "core" | "forms" | "video" | "quiz" | "cta" | "messaging" | "calculator" | "booking" | "funnel" | "shop" | "experiments";
 type EventDefinition = {
     name: string;
     props: Readonly<Record<string, PropSpec>>;
@@ -3090,6 +3159,12 @@ type WirePageview = {
     vids: WireVideo[];
     /** heat state of the pageview (behavior/wire-heat.ts), only for signals the capture level allows */
     h?: WirePageviewHeat;
+    /**
+     * Experiment keys whose variant()/experiment()/expose() was called on this pageview (≤ 20, any
+     * status incl. scheduled and rolled_out) – „Code live erkannt“ and cleanup telemetry (BUILD-ADDENDA W).
+     * Sent only when the config carries experiments; the server merges sends of one pageview as a set.
+     */
+    xc?: string[];
 };
 type WireSection = [firstMs: number, visibleMs: number];
 type WireVideo = {
@@ -3309,5 +3384,43 @@ type X3rHeader = {
 };
 declare function encodeX3r(header: X3rHeader, gzipped: Uint8Array): Uint8Array;
 
-export { CHOICE_CONTAINER_SELECTOR, CHOICE_INPUT_TYPES, CLICK_ID_KEYS, CLIENT_GEO_HEADER, CONTENTEDITABLE_SELECTOR, EVENT_NAME_PATTERN, ID_PATTERN, IMMEDIATE_CLICK_KINDS, INTERACTIVE_SELECTOR, KEY_PATTERN, LANG_PATTERN, MASKED_VALUE, MASK_ALWAYS_SELECTOR, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, X3R_FLAGS, attributeRule, attributionFromParams, buildAnchor, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, clickTarget, clientSamples, compileHostMatcher, compileMatcher, compileMatchers, elementText, encodeAttention, encodeScrollTimeline, encodeX3r, formatClientGeoHeader, hashIdentifiers, inFixed, isSafeRegex, isScriptUrl, maskLink, maskShape, normalizeHost, normalizeVideoId, notFoundPage, pathExcluded, readGeo, scrubPii, sessionFraction, slugify, storageKeys, structureHash, trimProps, validFbCookie, valueRecordable };
-export type { Attribution, AttributionOrigin, BehaviorClientConfig, BookingAdapter, CaptureSignal, ClickKind, ClientConfig, ClientJourneys, CompiledTrackingConfig, ConversionSource, HeartbeatResponse, MaskPolicy, NavType, NotFoundVia, PropValue, Props, ScrollMarks, ScrollSample, TrackingConfig, VideoFormat, WireAdCookies, WireClickHeat, WireClickIds, WireEvent, WireIdentify, WirePageview, WirePageviewHeat, WireSection, WireVideo, X3rHeader };
+/**
+ * Pure assignment (part 6, part 7 §7.2) – the same function runs in the browser SDK (client
+ * attributes only), the server SDK/Next helper and the API's /v1/x endpoint (all attributes).
+ */
+type AssignContext = {
+    host: string;
+    path: string;
+    lang?: string | null;
+    /** server-only attributes – undefined in the browser */
+    channel?: string | null;
+    device?: "desktop" | "mobile" | "tablet" | null;
+    country?: string | null;
+    /** true when the caller can evaluate server-only targeting (API, server helper) */
+    server: boolean;
+};
+type Assignment = {
+    key: string;
+    arm: string;
+    reason: AssignReason;
+    /** the unit is randomised into this experiment (counts in the analysis once exposed) */
+    inExperiment: boolean;
+    /** an exposure may be logged (running / cooldown, enrolled) */
+    exposable: boolean;
+    params: Record<string, JsonValue>;
+};
+/** Client-evaluable part of the targeting (paths, hosts, languages) matches this page */
+declare function clientTargetingMatches(tgt: ExperimentTargeting | undefined, ctx: Pick<AssignContext, "host" | "path" | "lang">): boolean;
+/**
+ * Arm of one experiment for a unit. `unit` is the unit id of the experiment's scope (null when no
+ * unit of that strength is available – part 6 §6.1 resolution order is the caller's job).
+ * `override` is a QA arm (x3_force) – the visit is test traffic, so it may be exposed.
+ */
+declare function assignExperiment(entry: ClientExperiment, unit: string | null, ctx: AssignContext, override?: string, serverMatch?: (tgt: ExperimentTargeting | undefined, ctx: AssignContext) => boolean): Assignment;
+/** Parses `?x3_force=key:arm,key2:arm2` (QA overrides, part 7 §7.7) */
+declare function parseForceParam(value: string | null | undefined): Record<string, string>;
+declare const FORCE_PARAM = "x3_force";
+declare const FORCE_TOKEN_PARAM = "x3_force_t";
+
+export { CHOICE_CONTAINER_SELECTOR, CHOICE_INPUT_TYPES, CLICK_ID_KEYS, CLIENT_GEO_HEADER, CONTENTEDITABLE_SELECTOR, EVENT_NAME_PATTERN, EXPERIMENTS_STALE_AFTER_S, FORCE_PARAM, FORCE_TOKEN_PARAM, ID_PATTERN, IMMEDIATE_CLICK_KINDS, INTERACTIVE_SELECTOR, KEY_PATTERN, LANG_PATTERN, MASKED_VALUE, MASK_ALWAYS_SELECTOR, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, X3R_FLAGS, assignExperiment, attributeRule, attributionFromParams, buildAnchor, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, clickTarget, clientSamples, clientTargetingMatches, compileHostMatcher, compileMatcher, compileMatchers, elementText, encodeAttention, encodeScrollTimeline, encodeX3r, formatClientGeoHeader, hashIdentifiers, inFixed, isSafeRegex, isScriptUrl, maskLink, maskShape, normalizeHost, normalizeVideoId, notFoundPage, parseForceParam, pathExcluded, readGeo, scrubPii, sessionFraction, slugify, storageKeys, structureHash, trimProps, validFbCookie, valueRecordable };
+export type { AssignReason, Attribution, AttributionOrigin, BehaviorClientConfig, BookingAdapter, CaptureSignal, ClickKind, ClientConfig, ClientExperiment, ClientExperiments, ClientJourneys, CompiledTrackingConfig, ConversionSource, HeartbeatResponse, JsonValue, MaskPolicy, NavType, NotFoundVia, PropValue, Props, ScrollMarks, ScrollSample, TrackingConfig, VideoFormat, WireAdCookies, WireClickHeat, WireClickIds, WireEvent, WireIdentify, WirePageview, WirePageviewHeat, WireSection, WireVideo, X3rHeader };

@@ -18,7 +18,7 @@ export type { Attribution, BookingAdapter, ClientConfig, NavType, PropValue, Vid
 export type ConsentState = "granted" | "denied" | "pending";
 export type MessagingApp = (typeof MESSAGING_APPS)[number];
 export type Props = Record<string, PropValue>;
-export type PluginName = "video" | "sections" | "forms" | "identify" | "consent" | "bookings" | "journeys" | "heat" | "live" | "signals" | "replay" | "privacy" | "capture";
+export type PluginName = "video" | "sections" | "forms" | "identify" | "consent" | "bookings" | "journeys" | "heat" | "live" | "signals" | "replay" | "privacy" | "capture" | "experiments";
 
 export type X3InitOptions = {
   /** publishable key pk_3x_… (project) */
@@ -96,6 +96,31 @@ export type ConversionOptions = {
   eventId?: string;
   /** hashed in the browser before sending (SHA-256, provider normalization) */
   contact?: { email?: string; phone?: string; firstName?: string; lastName?: string };
+};
+
+/**
+ * x3.lead() (BUILD-ADDENDA AA): a form's lead straight from the browser – the project must allow it
+ * (Einstellungen › CRM). Plaintext over TLS once; X3 checks for spam and pushes it to the CRM.
+ */
+export type LeadData = {
+  form?: string;
+  email?: string;
+  phone?: string;
+  firstName?: string;
+  lastName?: string;
+  company?: string;
+  message?: string;
+  /** {questionnaire: {question: option}} */
+  answers?: Record<string, Record<string, string>>;
+  consent?: { marketing?: boolean };
+  /** CRM aliases or names ("sales", "hubspot"); false = no CRM */
+  crm?: false | string[];
+  /** your honeypot field had a value (spam, never pushed) */
+  honeypot?: boolean;
+  /** ms the visitor spent in the form (default: time on the page) */
+  fillMs?: number;
+  /** dedupe of a double submit (default: a new random id) */
+  eventId?: string;
 };
 
 /** Custom players (YouTube/Vimeo/…): feed positions, the SDK builds coverage like for <video> */
@@ -196,6 +221,14 @@ export type X3PluginHost = {
   setConsent(state: "granted" | "denied"): void;
   /** visitor opt-out on this device: stores notrack (GPC-equivalent), halts tracking, stops every behavior signal */
   optOut(): void;
+  /** experiments plugin: the project's publishable key */
+  publishableKey(): string;
+  /** experiments plugin: QA overrides mark the page load as test traffic */
+  markTest(): void;
+  /** experiments plugin: tracking runs and the consent mode allows enrollment (require: after consent) */
+  enrollable(): boolean;
+  /** experiments plugin: record a code call (wire `xc`) on the current pageview */
+  experimentCall(key: string): void;
   /** guarded listener, removed when the tracker is destroyed */
   listen(target: EventTarget, type: string, listener: (event: Event) => void, options?: AddEventListenerOptions): void;
   debug(message: string): void;
@@ -215,6 +248,8 @@ export type X3Api = {
   identify(data: IdentifyData): Promise<void>;
   /** browser conversion beacon (POST {host}/v1/cb) for a conversion definition; resolves with the event id */
   conversion(definition: string, options?: ConversionOptions): Promise<string | null>;
+  /** lead from the browser (POST {host}/v1/leads); resolves true when it was sent */
+  lead(data: LeadData): Promise<boolean>;
   /** "granted" | "denied" for analytics, or per purpose: { analytics?, recordings? } (recordings never follow analytics) */
   consent(state: "granted" | "denied" | { analytics?: boolean; recordings?: boolean }): void;
   /** opens the privacy panel of the site (status, stop, erase, export) – x3.privacy.js */
@@ -243,6 +278,17 @@ export type X3Api = {
     track(element: HTMLVideoElement, options?: VideoOptions): void;
     custom(id: string, options?: VideoOptions): CustomVideoTracker;
   };
+  /**
+   * Experiments (A/B/n): the arm of a flag key – synchronous, never throws; "control" (or `fallback`)
+   * whenever the visitor is not enrolled or the assignment is not known yet. Logs the exposure on the
+   * first call per pageview unless `expose: false` (then call `expose(key)` where the arms differ).
+   */
+  variant(key: string, options?: { expose?: boolean; fallback?: string }): string;
+  /** arm, reason, params of the arm and whether the visitor is in the experiment */
+  experiment(key: string): ExperimentInfo;
+  /** log the exposure now (once per pageview and key) */
+  expose(key: string): void;
+  experiments: ExperimentsApi;
   /** bridges for existing funnel tracking hooks (stage/answer/event calls) – parity TR-74…TR-76 */
   bridges: {
     funnelStage(stage: string, variant?: string): void;
@@ -250,6 +296,26 @@ export type X3Api = {
     funnelEvent(event: string): void;
   };
   readonly version: string;
+};
+
+export type ExperimentReason = "assigned" | "override" | "rolled_out" | "not_running" | "unknown_key" | "targeting" | "coverage" | "no_consent" | "unit_unavailable" | "pending" | "stopped_arm";
+
+export type ExperimentInfo = {
+  key: string;
+  arm: string;
+  inExperiment: boolean;
+  reason: ExperimentReason;
+  /** params of the returned arm ({} for control without params) */
+  params: Record<string, unknown>;
+};
+
+export type ExperimentsApi = {
+  /** assignments resolved (default timeout 300 ms) – render experiment slots after it (anti-flicker) */
+  ready(timeoutMs?: number): Promise<void>;
+  /** an assignment arrived or the config changed; returns the unsubscribe function */
+  onChange(listener: (key: string) => void): () => void;
+  /** debug/QA: key → arm */
+  all(): Record<string, string>;
 };
 
 /** Script-tag queue commands: window.x3(command, ...args) – any X3Api method name; "event" = "track" */
@@ -261,11 +327,15 @@ export type X3QueueCommand =
   | ["page", string?]
   | ["identify", IdentifyData]
   | ["conversion", string, ConversionOptions?]
+  | ["lead", LeadData]
   | ["consent", "granted" | "denied" | { analytics?: boolean; recordings?: boolean }]
   | ["privacy"]
   | ["flush"]
   | ["optOut"]
-  | ["optIn"];
+  | ["optIn"]
+  /** callback after the assignment resolved (≤ 300 ms, then control): x3("variant", "hero-cta", (arm, info) => …) */
+  | ["variant", string, (arm: string, info: ExperimentInfo) => void, { expose?: boolean }?]
+  | ["expose", string];
 
 /**
  * Declarative markup (no code). `data-x3-*` always; `data-track-*` too when

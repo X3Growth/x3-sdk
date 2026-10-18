@@ -18,6 +18,11 @@
 import Script from "next/script";
 import type { ClientConfig } from "../_core/index.js";
 import type { ConsentState } from "../types";
+import type { X3Assignments } from "../server/experiments";
+import { inlineAssignments } from "./experiments";
+
+export { getAssignments, getVariant, type GetAssignmentsInput } from "./experiments";
+export type { X3Assignment, X3Assignments } from "../server/experiments";
 
 export const QUEUE_STUB = "window.x3=window.x3||function(){(window.x3q=window.x3q||[]).push(arguments)};";
 
@@ -40,6 +45,8 @@ export type X3AnalyticsProps = {
    * "afterInteractive": only next/script (e.g. a CSP without nonce for inline scripts)
    */
   strategy?: "early" | "afterInteractive";
+  /** server-side experiment assignments (getAssignments) – the browser starts with the same arms (no flicker, no /v1/x request) */
+  experiments?: X3Assignments | null;
 };
 
 /** JSON for an inline <script>: "<" escaped so the payload cannot close the tag */
@@ -55,10 +62,11 @@ export function earlyLoader(src: string, data: Record<string, string>): string {
   return `(function(d){var c=d.currentScript,s=d.createElement("script");s.async=true;s.src=${inlineJson(src)};var a=${inlineJson(data)};for(var k in a)s.setAttribute(k,a[k]);if(c&&c.nonce)s.nonce=c.nonce;(d.head||d.documentElement).appendChild(s)})(document);`;
 }
 
-export function X3Analytics({ publishableKey, host = "/n3", config, nonce, build = "full", consent, debug, hashRouting, strategy = "early" }: X3AnalyticsProps) {
+export function X3Analytics({ publishableKey, host = "/n3", config, nonce, build = "full", consent, debug, hashRouting, strategy = "early", experiments }: X3AnalyticsProps) {
   const base = host.replace(/\/+$/, "");
   const file = build === "core" ? "x3.js" : "x3.full.js";
-  const inline = `${QUEUE_STUB}${config ? `window.__x3cfg=${inlineJson(config)};` : ""}`;
+  const assigned = experiments && Object.keys(experiments).length > 0 ? `window.__x3xp=${inlineJson(inlineAssignments(experiments))};` : "";
+  const inline = `${QUEUE_STUB}${config ? `window.__x3cfg=${inlineJson(config)};` : ""}${assigned}`;
   const src = `${base}/v1/s/${file}${config ? "" : `?k=${encodeURIComponent(publishableKey)}`}`;
   const data: Record<string, string> = { "data-key": publishableKey, "data-host": base };
   if (consent) data["data-consent"] = consent;

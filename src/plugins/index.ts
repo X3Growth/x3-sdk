@@ -15,3 +15,4 @@ export { identify, hashIdentify } from "./identify";
 export { consent, CMP_ADAPTERS, type CmpName } from "./consent";
 export { bookings, bookingFromMessage, bridgeProps } from "./bookings";
 export { journeys } from "./journeys";
+export { experiments } from "./experiments";

@@ -23,6 +23,7 @@ export const funnelStep: X3Api["funnelStep"] = (funnel, step) => tracker.funnelS
 export const page: X3Api["page"] = (path) => tracker.page(path);
 export const identify: X3Api["identify"] = (data) => tracker.identify(data);
 export const conversion: X3Api["conversion"] = (definition, options) => tracker.conversion(definition, options);
+export const lead: X3Api["lead"] = (data) => tracker.lead(data);
 export const consent: X3Api["consent"] = (state) => tracker.consent(state);
 export const flush: X3Api["flush"] = () => tracker.flush();
 export const getIds: X3Api["getIds"] = () => tracker.getIds();

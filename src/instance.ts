@@ -24,6 +24,7 @@ const loaders: Record<PluginName, () => Promise<X3Plugin>> = {
   replay: () => import("./plugins/replay/index").then((m) => m.replay()),
   privacy: () => import("./plugins/privacy").then((m) => m.privacy()),
   capture: () => import("./plugins/capture").then((m) => m.capture()),
+  experiments: () => import("./plugins/experiments").then((m) => m.experiments()),
 };
 
 const store = globalThis as typeof globalThis & { __x3sdk?: Tracker };

@@ -33,7 +33,8 @@ const EVENT_LABELS = {
   booking: { en: "Meeting booked", de: "Termin gebucht" },
   funnel_step: { en: "Funnel step", de: "Trichterschritt" },
   purchase: { en: "Purchase", de: "Kauf" },
-  not_found: { en: "Page not found (404)", de: "Seite nicht gefunden (404)" }
+  not_found: { en: "Page not found (404)", de: "Seite nicht gefunden (404)" },
+  experiment_view: { en: "Experiment seen", de: "Experiment gesehen" }
 };
 const DEVICE_LABELS = {
   mobile: { en: "Mobile", de: "Handy" },

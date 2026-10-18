@@ -28,6 +28,10 @@
  * value is injected into the batch as `vid` ONLY when the batch says
  * `consent: true` (and the cookie renewed); a batch without consent deletes it.
  * The cookie itself never travels upstream.
+ *
+ * Experiments (BUILD-ADDENDA W): `GET /v1/x/{pk}` (assignments) is forwarded with its query; with
+ * `c=1` (the SDK sends it only with consent) the x3_vid value travels server-to-server as
+ * `x-3x-vid`, so visitor-sticky experiments work although the cookie is HttpOnly.
  */
 
 import { CLIENT_GEO_HEADER, formatClientGeoHeader, readGeo } from "../_core/index.js";
@@ -60,7 +64,7 @@ export function proxiedPath(pathname: string, method: string): string | null {
   if (index < 0) return null;
   const path = pathname.slice(index);
   if (method === "POST") return /^\/v1\/(?:e|collect|cb|r|r\/css|l|snap|snap\/session)$/.test(path) || /^\/v1\/privacy\/pk_3x_[0-9A-Za-z]{30}\/(?:erase|export)$/.test(path) ? path : null;
-  if (method === "GET") return /^\/v1\/(?:c|hb|privacy)\/pk_3x_[0-9A-Za-z]{30}$/.test(path) || /^\/v1\/s\/x3(?:\.[a-z]+)?(?:@[0-9A-Za-z.-]+)?\.js$/.test(path) ? path : null;
+  if (method === "GET") return /^\/v1\/(?:c|hb|privacy|x)\/pk_3x_[0-9A-Za-z]{30}$/.test(path) || /^\/v1\/s\/x3(?:\.[a-z]+)?(?:@[0-9A-Za-z.-]+)?\.js$/.test(path) ? path : null;
   return null;
 }
 
@@ -187,7 +191,8 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
       }
       if (!headers.has("content-type")) headers.set("content-type", "text/plain;charset=UTF-8");
     }
-    const query = /^\/v1\/(?:s|hb)\//.test(path) ? url.search : "";
+    const query = /^\/v1\/(?:s|hb|x)\//.test(path) ? url.search : "";
+    if (path.startsWith("/v1/x/") && vid && url.searchParams.get("c") === "1") headers.set("x-3x-vid", vid);
 
     let upstream: Response;
     try {

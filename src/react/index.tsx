@@ -42,3 +42,4 @@ export function useTrackOnMount(name: string, props?: Record<string, string | nu
 }
 
 export type { X3Api, X3InitOptions };
+export { useExpose, useVariant, Variant, X3Experiments, type VariantState } from "./experiments";

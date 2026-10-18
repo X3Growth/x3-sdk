@@ -41,7 +41,9 @@ import {
   LEGACY_DATA_ATTRIBUTES,
   type ConsentState,
   type ConversionOptions,
+  type LeadData,
   type CustomVideoTracker,
+  type ExperimentInfo,
   type IdentifyData,
   type MessagingApp,
   type PluginHooks,
@@ -58,6 +60,7 @@ import {
 import { classifyClick, downloadPattern, type ClickContext } from "./clicks";
 import { createBehavior, type ConsentInput } from "./behavior";
 import { compileClient, defaultClientConfig } from "./config";
+import type { Experiments } from "./experiments";
 import { buildBatches, post, type OutboxItem } from "./transport";
 import { coerce, guard, pathValue, readCookie, round1, stableId, storageGet, storageSet, uuid } from "./util";
 import { CLICK_CONTEXT_MS, CONFIG_WAIT_MS, DEDUPE_WINDOW_MS, EXPIRE_MARGIN_MS, FIRST_FLUSH_DELAY_MS, FLUSH_DEBOUNCE_MS, HEARTBEAT_MS, IDLE_AFTER_MS, LABEL_FORWARD_MS, MAX_AGE_MS, MAX_CUSTOM_PROPS, MAX_CUSTOM_STRING_LENGTH, MAX_ENGAGED_MS, MAX_EVENTS_PER_PAGEVIEW, POPSTATE_WINDOW_MS, RESUME_AFTER_HIDDEN_MS, SESSION_TIMEOUT_MS, TICK_MS } from "./constants";
@@ -127,6 +130,8 @@ type Pageview = TrackedPageview & {
   ident: WireIdentify | null;
   /** signature of the last sent state ("" = never sent) */
   sentSig: string;
+  /** experiment keys called on this pageview (wire `xc`) */
+  xc: string[];
 };
 
 type Session = { sid: string; fresh: boolean; last: number };
@@ -478,6 +483,12 @@ export function createTracker(env: TrackerEnv): Tracker {
     optOut: () => optOut(),
     listen,
     debug,
+    publishableKey: () => key,
+    markTest: () => {
+      testTraffic = true;
+    },
+    enrollable: () => running && !blocked && (cfg?.consent.mode !== "require" || consent),
+    experimentCall: (name) => experimentCall(name),
   };
 
   const register = guard((plugin: X3Plugin) => {
@@ -496,6 +507,26 @@ export function createTracker(env: TrackerEnv): Tracker {
       const fn = hook[name] as ((...a: unknown[]) => unknown) | undefined;
       if (fn) guard(fn)(...args);
     }
+  };
+
+  /* ------------------------------------------------------------ experiments (stub; logic in x3.experiments.js) */
+
+  /** records a code call (wire `xc`) on the current pageview – also before the plugin arrived */
+  const experimentCall = (name: string) => {
+    const pv = current;
+    if (!cfg?.experiments || !pv || pv.xc.includes(name) || pv.xc.length >= 20) return;
+    pv.xc.push(name);
+    flushTimer ??= setTimeout(guard(flush), FLUSH_DEBOUNCE_MS);
+  };
+  const exps = () => pluginApis.get("experiments") as Experiments | undefined;
+  /** the config carries experiments, or a QA link (x3_force / x3_force_t) wants a preview */
+  const wantsExperiments = () => !!cfg?.experiments || /[?&]x3_force(?:_t)?=/.test(window.location.search);
+  const changeListeners = new Set<(key: string) => void>();
+  /** control (or the retired key's applied arm) until the plugin knows better – never an exposure */
+  const experimentStub = (name: string): ExperimentInfo => {
+    const retired = cfg?.experiments?.retired?.find((entry) => entry.k === name);
+    const known = cfg?.experiments?.list.some((entry) => entry.key === name);
+    return { key: name, arm: retired?.o ?? "control", reason: retired ? "rolled_out" : known ? "pending" : "unknown_key", inExperiment: false, params: {} };
   };
 
   /* ------------------------------------------------------------ scroll and fold */
@@ -758,6 +789,7 @@ export function createTracker(env: TrackerEnv): Tracker {
       iclk: pv.iclk,
       vids: pv.vids.map((video) => ({ ...video, t: Math.round(video.t), dur: round1(video.dur), ws: Math.round(video.ws), mp: Math.round(video.mp), r: video.r.map(([from, to]): [number, number] => [from, to]), ...(video.rw ? { rw: video.rw.map(([from, to]): [number, number] => [from, to]) } : {}) })),
       ...behavior.pageview(pv.id),
+      ...(pv.xc.length > 0 ? { xc: [...pv.xc] } : {}),
     };
   };
 
@@ -776,6 +808,7 @@ export function createTracker(env: TrackerEnv): Tracker {
         .join(","),
       pv.vids.map((video) => `${Math.round(video.ws)}${video.done ? "e" : ""}`).join(","),
       JSON.stringify(behavior.pageview(pv.id)),
+      pv.xc.length,
     ].join("|");
 
   const send = (body: string) => {
@@ -983,6 +1016,7 @@ export function createTracker(env: TrackerEnv): Tracker {
       once: new Set(),
       ident: null,
       sentSig: "",
+      xc: [],
     };
     current = pv;
     outbox.push(pv);
@@ -1164,6 +1198,14 @@ export function createTracker(env: TrackerEnv): Tracker {
     if (next.plugins.video && auto.video !== false) requestPlugin("video");
     if (next.plugins.forms && auto.forms !== false) requestPlugin("forms");
     if (next.bookings.length || next.bridges.length) requestPlugin("bookings");
+    // experiments: only projects with flag entries download x3.experiments.js
+    if (wantsExperiments()) {
+      requestPlugin("experiments");
+      withPlugin<Experiments>("experiments", (api) => {
+        for (const listener of changeListeners) api.onChange(listener);
+        for (const entry of next.experiments?.list ?? []) for (const listener of changeListeners) guard(listener)(entry.key);
+      });
+    }
     if (options?.debug) exposeDebug();
     start();
     behavior.changed();
@@ -1354,6 +1396,21 @@ export function createTracker(env: TrackerEnv): Tracker {
       whenStarted(go);
     });
 
+  const lead = (data: LeadData): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      const go = settled(resolve, false, () => {
+        if (!running || !data || typeof data !== "object") return resolve(false);
+        const pv = current;
+        const { honeypot, fillMs, ...rest } = data;
+        // the pageview (session, attribution) goes out first: the server links the lead to it
+        flush();
+        post(`${host}/v1/leads`, JSON.stringify({ ...rest, k: key, sid: pv?.sid ?? session?.sid, pv: pv?.id, fillMs: fillMs ?? (pv ? Date.now() - pv.t0 : undefined), hp: honeypot || undefined, eventId: data.eventId ?? uuid(), test: testTraffic || undefined }));
+        resolve(true);
+      });
+      if (!initialized) resolve(false);
+      whenStarted(go);
+    });
+
   const getIds = (): X3Ids => {
     try {
       if (!running) return { sessionId: null, pageviewId: null, attribution: {}, url: null, test: false, consent: false };
@@ -1374,6 +1431,7 @@ export function createTracker(env: TrackerEnv): Tracker {
     storageSet("localStorage", keys.notrack, "1");
     halt();
     blocked = true;
+    exps()?.reset();
   });
 
   const optIn = guard(() => {
@@ -1407,12 +1465,44 @@ export function createTracker(env: TrackerEnv): Tracker {
     page,
     identify,
     conversion,
+    lead,
     consent: guard((state: ConsentInput) => behavior.consent(state, setConsent)),
     privacy: guard(() => withPlugin<{ open(): void }>("privacy", (api) => api.open())),
     flush: guard(() => flush()),
     getIds,
     optOut,
     optIn,
+    variant: (name, opts) => {
+      const api = exps();
+      if (api) return api.variant(name, opts);
+      experimentCall(name);
+      const stub = experimentStub(name);
+      return stub.reason === "unknown_key" && opts?.fallback ? opts.fallback : stub.arm;
+    },
+    experiment: (name) => {
+      const api = exps();
+      if (api) return api.experiment(name);
+      experimentCall(name);
+      return experimentStub(name);
+    },
+    expose: (name) => (exps() ? exps()?.expose(name) : experimentCall(name)),
+    experiments: {
+      ready: (ms = 300) =>
+        new Promise<void>((done) => {
+          if (cfg && !wantsExperiments()) return done();
+          const timer = setTimeout(done, ms);
+          withPlugin<Experiments>("experiments", (api) => void api.ready(ms).then(() => (clearTimeout(timer), done())));
+        }),
+      onChange: (listener) => {
+        changeListeners.add(listener);
+        const off = exps()?.onChange(listener);
+        return () => {
+          changeListeners.delete(listener);
+          off?.();
+        };
+      },
+      all: () => exps()?.all() ?? {},
+    },
     quiz: {
       view: guard((variant?: string) => preset("quiz_view", { variant })),
       answer: guard((variant: string, q: string, value: string) => preset("quiz_answer", { variant, q, value })),

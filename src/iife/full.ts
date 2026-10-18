@@ -4,6 +4,7 @@ import { consent } from "../plugins/consent";
 import { forms } from "../plugins/forms";
 import { heat } from "../plugins/heat";
 import { identify } from "../plugins/identify";
+import { experiments } from "../plugins/experiments";
 import { journeys } from "../plugins/journeys";
 import { live } from "../plugins/live";
 import { sections } from "../plugins/sections";
@@ -11,4 +12,4 @@ import { signals } from "../plugins/signals";
 import { video } from "../plugins/video";
 import { boot } from "./boot";
 
-boot([video(), sections(), forms(), identify(), consent(), bookings(), journeys(), heat(), live(), signals()], true);
+boot([video(), sections(), forms(), identify(), consent(), bookings(), journeys(), heat(), live(), signals(), experiments()], true);

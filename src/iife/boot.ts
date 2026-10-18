@@ -62,7 +62,12 @@ export function boot(bundled: X3Plugin[], lazy: boolean): void {
     const owner = (head && tail ? (tracker as unknown as Record<string, unknown>)[head] : tracker) as Record<string, unknown> | undefined;
     const fn = head && name !== "init" ? owner?.[tail ?? head] : undefined;
     if (name === "init") tracker.init(args[0] as X3InitOptions);
-    else if (typeof fn === "function") (fn as (...a: unknown[]) => unknown).apply(owner, args);
+    // x3("variant", key, (arm, info) => …, { expose }): the callback runs once the assignment is known (≤ 300 ms)
+    else if (name === "variant" && typeof args[1] === "function") {
+      const key = String(args[0]);
+      const options = args[2] as { expose?: boolean } | undefined;
+      void tracker.experiments.ready().then(guard(() => (args[1] as (arm: string, info: unknown) => void)(tracker.variant(key, options), tracker.experiment(key))));
+    } else if (typeof fn === "function") (fn as (...a: unknown[]) => unknown).apply(owner, args);
   });
   const queue = Array.from(w.x3q ?? [], (entry) => Array.from(entry));
   w.x3 = Object.assign(dispatch, tracker);
