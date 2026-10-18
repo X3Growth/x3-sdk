@@ -56,6 +56,7 @@ import {
   type X3PluginHost,
 } from "../types";
 import { classifyClick, downloadPattern, type ClickContext } from "./clicks";
+import { createBehavior, type ConsentInput } from "./behavior";
 import { compileClient, defaultClientConfig } from "./config";
 import { buildBatches, post, type OutboxItem } from "./transport";
 import { coerce, guard, pathValue, readCookie, round1, stableId, storageGet, storageSet, uuid } from "./util";
@@ -131,6 +132,8 @@ type Pageview = TrackedPageview & {
 type Session = { sid: string; fresh: boolean; last: number };
 
 const KEY_FORMAT = /^pk_3x_[0-9A-Za-z]{30}$/;
+/** Global Privacy Control: always a stop for behavior signals (B3), a denial for core tracking when the project honours it */
+const gpcOn = () => (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
 const TEXT_LABEL_SELECTOR = "a,button,summary,[role=button],[role=link]";
 const BASE_TARGETS = "a,button,[role=button],[role=link],input,select,textarea,label,summary";
 /** queued events across all pageviews that trigger an immediate send – parity */
@@ -220,6 +223,9 @@ export function createTracker(env: TrackerEnv): Tracker {
   const sent: string[] = [];
   /** explicit denial seen (consent journeys plugin deletes its cookies) */
   let denied = false;
+  // recordings/heatmaps/live gate + anchor capture (RECORDINGS-HEATMAPS §20.B/C)
+  const behavior = createBehavior({ config: () => cfg?.behavior, consent: () => consent, denied: () => denied || consentLocked, stopped: () => !running || testTraffic || gpcOn(), request: (name) => requestPlugin(name), key: () => key });
+  hooks.push({ consent: () => behavior.changed() });
 
   const debug = (message: string) => {
     if (options?.debug) console.warn(`[3x] ${message}`);
@@ -395,6 +401,7 @@ export function createTracker(env: TrackerEnv): Tracker {
     const event: WireEvent = { pv: pv.id, n: pv.n++, t: Math.round(age(pv)), e: name };
     if (Object.keys(props).length) event.p = props;
     pv.queue.push(event);
+    behavior.bind(name, event);
     if (flushNow || definition?.flush || queuedCount() >= FLUSH_EVENT_COUNT) flush();
     else flushTimer ??= setTimeout(guard(flush), FLUSH_DEBOUNCE_MS);
     return event;
@@ -466,7 +473,9 @@ export function createTracker(env: TrackerEnv): Tracker {
     consent: () => consent,
     consentDenied: () => denied,
     apiHost: () => host,
+    behavior: () => behavior.bridge,
     setConsent: (state) => setConsent(state),
+    optOut: () => optOut(),
     listen,
     debug,
   };
@@ -617,6 +626,7 @@ export function createTracker(env: TrackerEnv): Tracker {
 
     pv.clk++;
     if (kind !== "other") pv.iclk++;
+    behavior.arm(target, mouse);
     emit(pv, "click", { kind, tag: TAG_PATTERN.test(tag) ? tag : "unknown", label, href, section, y, ext });
     lastClick = { at: Date.now(), label, section };
 
@@ -747,6 +757,7 @@ export function createTracker(env: TrackerEnv): Tracker {
       clk: pv.clk,
       iclk: pv.iclk,
       vids: pv.vids.map((video) => ({ ...video, t: Math.round(video.t), dur: round1(video.dur), ws: Math.round(video.ws), mp: Math.round(video.mp), r: video.r.map(([from, to]): [number, number] => [from, to]) })),
+      ...behavior.pageview(pv.id),
     };
   };
 
@@ -764,6 +775,7 @@ export function createTracker(env: TrackerEnv): Tracker {
         .map(([name, [, visible]]) => `${name}:${Math.round(visible / 1000)}`)
         .join(","),
       pv.vids.map((video) => `${Math.round(video.ws)}${video.done ? "e" : ""}`).join(","),
+      JSON.stringify(behavior.pageview(pv.id)),
     ].join("|");
 
   const send = (body: string) => {
@@ -784,6 +796,7 @@ export function createTracker(env: TrackerEnv): Tracker {
     if (flushTimer) clearTimeout(flushTimer);
     flushTimer = null;
     if (!cfg) return;
+    behavior.finalize();
     if (current) {
       lateNotFound(current);
       sample();
@@ -810,7 +823,7 @@ export function createTracker(env: TrackerEnv): Tracker {
         pv.ident = null;
         return item;
       });
-      const envelope = { k: key, sid, fresh: group[0]?.fresh ?? false, consent, test: testTraffic, cv: cfg.rev, lib: env.lib, ac: cookies, ...ids };
+      const envelope = { k: key, sid, fresh: group[0]?.fresh ?? false, consent, test: testTraffic, cv: cfg.rev, lib: env.lib, ac: cookies, ...ids, ...behavior.envelope() };
       for (const body of buildBatches(envelope, items)) send(body);
     }
     heartbeatAt = now;
@@ -1009,6 +1022,8 @@ export function createTracker(env: TrackerEnv): Tracker {
     running = false;
     started = false;
     currentRaw = null;
+    // recording, live and heat plugins re-check their gate now (opt-out stops every signal at once, §4.7)
+    behavior.changed();
   };
 
   /** Route change (history patch, popstate, hashchange): handled after the router rendered */
@@ -1128,8 +1143,7 @@ export function createTracker(env: TrackerEnv): Tracker {
     };
 
     // consent: GPC is a denial; then explicit init option, the banner's storage key, CMP adapters later
-    const gpc = next.consent.respectGlobalPrivacyControl && (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
-    if (gpc) {
+    if (next.consent.respectGlobalPrivacyControl && gpcOn()) {
       consentLocked = true;
       // x3.consent("granted") before the config arrived does not override GPC
       consent = false;
@@ -1146,6 +1160,7 @@ export function createTracker(env: TrackerEnv): Tracker {
     if (next.bookings.length || next.bridges.length) requestPlugin("bookings");
     if (options?.debug) exposeDebug();
     start();
+    behavior.changed();
   };
 
   const defaultConfig = (): ClientConfig => defaultClientConfig(normalizeHost(window.location.hostname) || "localhost");
@@ -1386,9 +1401,8 @@ export function createTracker(env: TrackerEnv): Tracker {
     page,
     identify,
     conversion,
-    consent: guard((state: "granted" | "denied") => {
-      if (state === "granted" || state === "denied") setConsent(state);
-    }),
+    consent: guard((state: ConsentInput) => behavior.consent(state, setConsent)),
+    privacy: guard(() => withPlugin<{ open(): void }>("privacy", (api) => api.open())),
     flush: guard(() => flush()),
     getIds,
     optOut,

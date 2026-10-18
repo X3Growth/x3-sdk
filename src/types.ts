@@ -1,4 +1,5 @@
 import type { Attribution, ClientConfig, MESSAGING_APPS, NavType, PropValue, WireEvent, WireSection, WireVideo } from "./_core/index.js";
+import type { BehaviorBridge } from "./core/behavior";
 
 /** Shared types of the wire protocol and project config used in the SDK's public signatures */
 export type { Attribution, BookingAdapter, ClientConfig, NavType, PropValue, VideoFormat, WireEvent, WireIdentify, WirePageview, WireSection, WireVideo } from "./_core/index.js";
@@ -17,7 +18,7 @@ export type { Attribution, BookingAdapter, ClientConfig, NavType, PropValue, Vid
 export type ConsentState = "granted" | "denied" | "pending";
 export type MessagingApp = (typeof MESSAGING_APPS)[number];
 export type Props = Record<string, PropValue>;
-export type PluginName = "video" | "sections" | "forms" | "identify" | "consent" | "bookings" | "journeys";
+export type PluginName = "video" | "sections" | "forms" | "identify" | "consent" | "bookings" | "journeys" | "heat" | "live" | "signals" | "replay" | "privacy" | "capture";
 
 export type X3InitOptions = {
   /** publishable key pk_3x_… (project) */
@@ -182,7 +183,11 @@ export type X3PluginHost = {
   consentDenied(): boolean;
   /** the API root the SDK talks to (proxy path such as "/n3" or the API origin) */
   apiHost(): string;
+  /** recordings/heatmaps/live bridge (gate, consent per purpose, anchor capture) – core/behavior.ts */
+  behavior(): BehaviorBridge;
   setConsent(state: "granted" | "denied"): void;
+  /** visitor opt-out on this device: stores notrack (GPC-equivalent), halts tracking, stops every behavior signal */
+  optOut(): void;
   /** guarded listener, removed when the tracker is destroyed */
   listen(target: EventTarget, type: string, listener: (event: Event) => void, options?: AddEventListenerOptions): void;
   debug(message: string): void;
@@ -202,7 +207,10 @@ export type X3Api = {
   identify(data: IdentifyData): Promise<void>;
   /** browser conversion beacon (POST {host}/v1/cb) for a conversion definition; resolves with the event id */
   conversion(definition: string, options?: ConversionOptions): Promise<string | null>;
-  consent(state: "granted" | "denied"): void;
+  /** "granted" | "denied" for analytics, or per purpose: { analytics?, recordings? } (recordings never follow analytics) */
+  consent(state: "granted" | "denied" | { analytics?: boolean; recordings?: boolean }): void;
+  /** opens the privacy panel of the site (status, stop, erase, export) – x3.privacy.js */
+  privacy(): void;
   /** send everything queued now (sendBeacon) */
   flush(): void;
   getIds(): X3Ids;
@@ -245,7 +253,8 @@ export type X3QueueCommand =
   | ["page", string?]
   | ["identify", IdentifyData]
   | ["conversion", string, ConversionOptions?]
-  | ["consent", "granted" | "denied"]
+  | ["consent", "granted" | "denied" | { analytics?: boolean; recordings?: boolean }]
+  | ["privacy"]
   | ["flush"]
   | ["optOut"]
   | ["optIn"];

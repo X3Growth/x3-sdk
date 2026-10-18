@@ -65,7 +65,8 @@ for (const entry of cjsEntries) {
 const iifeEntries: Array<[string, string]> = [
   ["src/iife/core.ts", "x3"],
   ["src/iife/full.ts", "x3.full"],
-  ...["video", "sections", "forms", "identify", "consent", "bookings", "journeys"].map((name): [string, string] => [`src/iife/plugin-${name}.ts`, `x3.${name}`]),
+  ...["video", "sections", "forms", "identify", "consent", "bookings", "journeys", "heat", "live", "signals", "replay", "privacy", "capture"].map((name): [string, string] => [`src/iife/plugin-${name}.ts`, `x3.${name}`]),
+  ["src/iife/plugin-fflate.ts", "x3.fflate"],
 ];
 mkdirSync(`${root}dist/iife`, { recursive: true });
 for (const [entry, name] of iifeEntries) {

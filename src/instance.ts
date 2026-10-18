@@ -18,6 +18,12 @@ const loaders: Record<PluginName, () => Promise<X3Plugin>> = {
   consent: () => import("./plugins/consent").then((m) => m.consent()),
   bookings: () => import("./plugins/bookings").then((m) => m.bookings()),
   journeys: () => import("./plugins/journeys").then((m) => m.journeys()),
+  heat: () => import("./plugins/heat").then((m) => m.heat()),
+  live: () => import("./plugins/live").then((m) => m.live()),
+  signals: () => import("./plugins/signals").then((m) => m.signals()),
+  replay: () => import("./plugins/replay/index").then((m) => m.replay()),
+  privacy: () => import("./plugins/privacy").then((m) => m.privacy()),
+  capture: () => import("./plugins/capture").then((m) => m.capture()),
 };
 
 const store = globalThis as typeof globalThis & { __x3sdk?: Tracker };

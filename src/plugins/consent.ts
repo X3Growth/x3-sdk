@@ -103,20 +103,31 @@ export function consent(): X3Plugin {
     name: "consent",
     install(host: X3PluginHost) {
       if (host.api !== 1) return {};
-      const adapters = host.config().consent.cmp.map((name) => CMP_ADAPTERS[name as CmpName]).filter(Boolean);
+      const names = host.config().consent.cmp.filter((name) => CMP_ADAPTERS[name as CmpName]) as CmpName[];
       let last: "granted" | "denied" | null = null;
-      const report: Report = (state) => {
-        if (state === last) return;
-        last = state;
-        host.setConsent(state);
-      };
-      const check = () => {
-        for (const adapter of adapters) {
-          const state = adapter.read();
-          if (state) return report(state);
+      // a confirmed statistics category that names session recording grants the recordings purpose too (wizard step 1)
+      const records = (name: CmpName) => !!host.behavior?.().config()?.cmpRecords?.includes(name);
+      // the project config (cmpRecords) may arrive after the CMP's first answer: the recordings purpose is re-checked on every report
+      let lastRecordings: "granted" | "denied" | null = null;
+      const reportFor = (name: CmpName): Report => (state) => {
+        if (state !== last) {
+          last = state;
+          host.setConsent(state);
+        }
+        if (records(name) && state !== lastRecordings) {
+          lastRecordings = state;
+          // consent proof of the recordings purpose: this CMP and the time of its decision (§5.5)
+          host.behavior().cp = { cmp: name, ts: Date.now() };
+          host.behavior().setRecordings(state === "granted" ? "g" : "d");
         }
       };
-      for (const adapter of adapters) adapter.subscribe(host.listen, check, report);
+      const check = () => {
+        for (const name of names) {
+          const state = CMP_ADAPTERS[name].read();
+          if (state) return reportFor(name)(state);
+        }
+      };
+      for (const name of names) CMP_ADAPTERS[name].subscribe(host.listen, check, reportFor(name));
       check();
       // CMPs load asynchronously and do not always fire an event for a stored decision
       for (const delay of [500, 1_500, 4_000]) setTimeout(() => {

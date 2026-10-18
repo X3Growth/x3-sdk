@@ -86,7 +86,7 @@ const LIMITS = {
 };
 const TIMING = {
   /** parity */
-  sessionTimeoutMs: 30 * 6e4,
+  sessionTimeoutMs: 18e5,
   /** parity */
   heartbeatMs: 12e4,
   /** parity */
@@ -94,7 +94,7 @@ const TIMING = {
   /** parity */
   firstFlushDelayMs: 1e3,
   /** parity */
-  resumeAfterHiddenMs: 30 * 6e4,
+  resumeAfterHiddenMs: 18e5,
   /** parity */
   idleAfterMs: 3e4,
   /** parity */
@@ -108,17 +108,17 @@ const TIMING = {
   /** parity: last click context attached to bridged CTA/WhatsApp events (TR-49) */
   clickContextMs: 1e3,
   /** parity: pageviews are finalized this long before maxAgeMs (TR-15) */
-  expireMarginMs: 10 * 6e4,
+  expireMarginMs: 6e5,
   /** parity */
-  dbSizeRefreshMs: 15 * 6e4,
+  dbSizeRefreshMs: 9e5,
   /** parity */
   dbCooldownMs: 6e4,
   /** parity */
   dashboardStatementTimeoutMs: 8e3,
   /** parity */
-  cleanupMinIntervalMs: 20 * 36e5,
+  cleanupMinIntervalMs: 72e6,
   /** parity */
-  cleanupStaleAfterMs: 48 * 36e5,
+  cleanupStaleAfterMs: 1728e5,
   /** parity */
   sectionVisibleRatio: 0.5,
   /** parity */

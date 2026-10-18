@@ -12,11 +12,14 @@
  * Web-standard Request → Response, so it also works in any fetch-based server
  * (Hono, Remix, SvelteKit, Workers): `handler.handle(request)`.
  *
- * Forwards only the SDK's four path families (/v1/e|collect, /v1/c/{pk},
- * /v1/cb, /v1/s/{file}); strips cookies and authorization; passes user-agent,
- * origin and the body; adds the visitor's IP/country (x-3x-client-ip /
- * x-3x-client-country) and the proxy key (x-3x-proxy-key, server env only),
- * which the API requires before it trusts those headers.
+ * Forwards only the SDK's path families (/v1/e|collect, /v1/c/{pk}, /v1/cb,
+ * /v1/s/{file}; recordings/heatmaps/live: /v1/r, /v1/r/css, /v1/hb/{pk}, /v1/l,
+ * /v1/snap[/session], /v1/privacy/{pk}[/erase|/export]); strips cookies and
+ * authorization; passes user-agent, origin and the body (recording packets as
+ * bytes, ≤ 1 MB); adds the visitor's IP/country/geo (x-3x-client-ip /
+ * x-3x-client-country / x-3x-client-geo "CC;region;city;lat;lon" from the edge)
+ * and the proxy key (x-3x-proxy-key, server env only), which the API requires
+ * before it trusts those headers.
  *
  * Consented visitor id (ARCHITECTURE §10.5): `POST /v1/id` is answered here and
  * never forwarded – `{consent:true}` sets/renews the first-party HttpOnly cookie
@@ -26,6 +29,8 @@
  * `consent: true` (and the cookie renewed); a batch without consent deletes it.
  * The cookie itself never travels upstream.
  */
+
+import { CLIENT_GEO_HEADER, formatClientGeoHeader, readGeo } from "../_core/index.js";
 
 export type X3ProxyOptions = {
   /** 3x API origin, e.g. https://api.3x.example */
@@ -54,8 +59,8 @@ export function proxiedPath(pathname: string, method: string): string | null {
   const index = pathname.indexOf("/v1/");
   if (index < 0) return null;
   const path = pathname.slice(index);
-  if (method === "POST") return /^\/v1\/(?:e|collect|cb)$/.test(path) ? path : null;
-  if (method === "GET") return /^\/v1\/c\/pk_3x_[0-9A-Za-z]{30}$/.test(path) || /^\/v1\/s\/x3(?:\.[a-z]+)?(?:@[0-9A-Za-z.-]+)?\.js$/.test(path) ? path : null;
+  if (method === "POST") return /^\/v1\/(?:e|collect|cb|r|r\/css|l|snap|snap\/session)$/.test(path) || /^\/v1\/privacy\/pk_3x_[0-9A-Za-z]{30}\/(?:erase|export)$/.test(path) ? path : null;
+  if (method === "GET") return /^\/v1\/(?:c|hb|privacy)\/pk_3x_[0-9A-Za-z]{30}$/.test(path) || /^\/v1\/s\/x3(?:\.[a-z]+)?(?:@[0-9A-Za-z.-]+)?\.js$/.test(path) ? path : null;
   return null;
 }
 
@@ -76,12 +81,27 @@ export function visitorCountry(headers: Headers): string | null {
   return /^[A-Z]{2}$/.test(value) && value !== "XX" ? value : null;
 }
 
-async function readBody(request: Request): Promise<string | null> {
+/** Body limits per path: recording packets 1 MB (X3R_MAX_PACKET), owner snapshots 4 MB (Vercel's request limit is 4.5 MB) */
+function bodyLimit(path: string): number {
+  return path === "/v1/r" ? 1024 * 1024 : path === "/v1/snap" ? 4 * 1024 * 1024 : MAX_BODY_BYTES;
+}
+
+async function readBytes(request: Request, max = MAX_BODY_BYTES): Promise<ArrayBuffer | null> {
   const declared = Number(request.headers.get("content-length") ?? "0");
-  if (declared > MAX_BODY_BYTES) return null;
+  if (declared > max) return null;
   const buffer = await request.arrayBuffer();
-  if (buffer.byteLength > MAX_BODY_BYTES) return null;
-  return new TextDecoder().decode(buffer);
+  return buffer.byteLength > max ? null : buffer;
+}
+
+async function readBody(request: Request, max = MAX_BODY_BYTES): Promise<string | null> {
+  const buffer = await readBytes(request, max);
+  return buffer && new TextDecoder().decode(buffer);
+}
+
+/** x-3x-client-geo from the hosting edge (Vercel, else Cloudflare); null when the edge sends no country */
+export function visitorGeo(headers: Headers): string | null {
+  const geo = readGeo((name) => headers.get(name), false);
+  return geo ? formatClientGeoHeader(geo) : null;
 }
 
 const empty = (status: number, headers?: Record<string, string>) => new Response(null, { status, headers: { "cache-control": "no-store", ...headers } });
@@ -141,17 +161,20 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
     if (ip) headers.set("x-3x-client-ip", ip);
     const country = visitorCountry(request.headers);
     if (country) headers.set("x-3x-client-country", country);
+    const geo = visitorGeo(request.headers);
+    if (geo) headers.set(CLIENT_GEO_HEADER, geo);
     if (options.proxyKey) headers.set("x-3x-proxy-key", options.proxyKey);
 
-    let body: string | undefined;
+    let body: string | ArrayBuffer | undefined;
     let setCookie: string | null = null;
     if (method === "POST") {
-      const text = await readBody(request);
+      // recording packets are binary (X3R1 + gzip): forwarded byte for byte
+      const text = path === "/v1/r" ? await readBytes(request, bodyLimit(path)) : await readBody(request, bodyLimit(path));
       if (text === null) return empty(413);
       body = text;
       if (/^\/v1\/(?:e|collect)$/.test(path)) {
         try {
-          const batch = JSON.parse(text) as Record<string, unknown>;
+          const batch = JSON.parse(text as string) as Record<string, unknown>;
           if (batch && batch.consent === true && vid) {
             body = JSON.stringify({ ...batch, vid });
             setCookie = visitorSetCookie(vid, url);
@@ -164,7 +187,7 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
       }
       if (!headers.has("content-type")) headers.set("content-type", "text/plain;charset=UTF-8");
     }
-    const query = path.startsWith("/v1/s/") ? url.search : "";
+    const query = /^\/v1\/(?:s|hb)\//.test(path) ? url.search : "";
 
     let upstream: Response;
     try {
