@@ -6,9 +6,11 @@ import { readCookie, uuid } from "./util";
  * runs before consent (§ 25 Abs. 1 TDDDG): the tracker only calls page()/grant()
  * with consent and wire() returns nothing without it.
  *
- *  x3_vid  first-party visitor id (13 months, renewed per page load). Behind the
- *          Next.js proxy it is an HttpOnly cookie set by POST {host}/v1/id and
- *          injected into batches by the proxy; otherwise a JS cookie sent as `vid`.
+ *  x3_vid  first-party visitor id (ClientConfig.journeys.visitorIdDays: 13 months by default,
+ *          shorter when the project says so or its retention is shorter; renewed per page load).
+ *          Behind the Next.js proxy it is an HttpOnly cookie set by POST {host}/v1/id (the SDK
+ *          sends the lifetime as `days`) and injected into batches by the proxy; otherwise a
+ *          JS cookie sent as `vid`.
  *  x3_clk  URL click ids with their first sighting (90 days), sent as `ck`.
  *  _fbp/_fbc/_ttp created when missing (ClientConfig.journeys.fbp/ttp, 90 days);
  *          the ones created here are listed in x3_clk "_own" and deleted on revocation.
@@ -67,12 +69,13 @@ export function createPersist(journeys: () => ClientJourneys | undefined, host: 
       return {};
     }
   };
+  const days = () => journeys()?.visitorIdDays ?? 395;
   const ensureVid = () => {
     const vid = readCookie(VID);
-    writeCookie(VID, vid && UUID_PATTERN.test(vid) ? vid : uuid(), 395);
+    writeCookie(VID, vid && UUID_PATTERN.test(vid) ? vid : uuid(), days());
   };
   const ask = (granted: boolean) =>
-    fetch(`${host()}/v1/id`, { method: "POST", credentials: "same-origin", keepalive: true, body: `{"consent":${granted}}` });
+    fetch(`${host()}/v1/id`, { method: "POST", credentials: "same-origin", keepalive: true, body: granted ? `{"consent":true,"days":${days()}}` : `{"consent":false}` });
 
   return {
     grant() {

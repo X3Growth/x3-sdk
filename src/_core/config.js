@@ -2,6 +2,7 @@
 // Only the part of the core the SDK uses; changes are made upstream and synced.
 import { compileHostMatcher, compileMatcher, compileMatchers, compileOriginMatcher, isSafeRegex } from "./matchers.js";
 import { effectiveAutoCapture } from "./parity.js";
+import { effectiveVisitorIdDays, VISITOR_ID_DAYS } from "./journeys.js";
 const DEFAULT_EXCLUDE_PATHS = [
   { kind: "prefix", value: "/api" },
   { kind: "prefix", value: "/_next" },
@@ -74,16 +75,17 @@ function compileTrackingConfig(config) {
   };
 }
 const DEFAULT_JOURNEY_SETTINGS = { visitorId: true, clickIds: true, adCookies: "auto" };
-function clientJourneys(config, destinations = { meta: false, tiktok: false }) {
+function clientJourneys(config, destinations = { meta: false, tiktok: false }, retentionDays) {
   const settings = config.journeys ?? DEFAULT_JOURNEY_SETTINGS;
   const create = (enabled) => settings.adCookies === "always" || settings.adCookies === "auto" && enabled;
-  return { visitorId: settings.visitorId, clickIds: settings.clickIds, fbp: create(destinations.meta), ttp: create(destinations.tiktok) };
+  const days = effectiveVisitorIdDays(settings.visitorIdDays, retentionDays);
+  return { visitorId: settings.visitorId, clickIds: settings.clickIds, fbp: create(destinations.meta), ttp: create(destinations.tiktok), ...days !== VISITOR_ID_DAYS.default ? { visitorIdDays: days } : {} };
 }
 const UNIVERSAL_TEST_PARAM = "x3_test";
 function effectiveTestParams(params) {
   return [.../* @__PURE__ */ new Set([...params, UNIVERSAL_TEST_PARAM])];
 }
-function toClientConfig(config, rev, channelRules, callingCode, destinations = { meta: false, tiktok: false }) {
+function toClientConfig(config, rev, channelRules, callingCode, destinations = { meta: false, tiktok: false }, retentionDays) {
   return {
     rev,
     domains: config.domains,
@@ -110,7 +112,7 @@ function toClientConfig(config, rev, channelRules, callingCode, destinations = {
     allowLocalhost: config.allowLocalhost,
     channelRules,
     callingCode,
-    journeys: clientJourneys(config, destinations),
+    journeys: clientJourneys(config, destinations, retentionDays),
     autoCapture: effectiveAutoCapture(config.autoCapture)
   };
 }

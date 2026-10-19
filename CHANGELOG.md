@@ -5,6 +5,22 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.2] – 2026-10-19
+
+### Added
+- `x3.identify({ leadId })`: links the current visit to a lead X3 already knows – your CRM record id, your
+  own lead/customer id or the X3 lead id. Sent as a SHA-256 hash (same normalization as `externalId`); it
+  never creates a lead on its own. With consent the visitor id links the visitor's earlier and later visits
+  too. Follows the project's identify consent rule (`identify.requireConsent`, default on).
+- Consented visitor id lifetime: `x3_vid` uses the project's `journeys.visitorIdDays` (default and maximum
+  395 days = 13 months, capped by the retention) for the JS cookie and passes it to the first-party proxy as
+  `days` on `POST /v1/id`.
+
+### Changed
+- First-party proxy (`@x3growth/sdk/next/proxy`): `x3_vid` is set and renewed only on `POST /v1/id` (every
+  page load with consent) with the lifetime the SDK sends (1–395 days); consented batches no longer re-set
+  the cookie with a fixed 13 months.
+
 ### Fixed
 - Experiments: `GET /v1/x` gets the page view's in-memory id (`pl`) and answers assigned arms with a signed
   receipt (`v`); `experiment_view` sends both back for day and visitor units. A visitor whose network changed

@@ -17,7 +17,7 @@ export { cleanIdentifier, cleanLabel, cleanText, normalizeVideoId, slugify } fro
 export { clientSamples, sessionFraction } from "./behavior/keep-decision.js";
 export { compileHostMatcher, compileMatcher, compileMatchers, isSafeRegex } from "./matchers.js";
 export { encodeAttention, encodeScrollTimeline } from "./behavior/wire-heat.js";
-export { hashIdentifiers, validFbCookie } from "./pii.js";
+export { hashIdentifiers, normalizeExternalId, sha256Hex, validFbCookie } from "./pii.js";
 export { pathExcluded } from "./behavior/client-config.js";
 export { storageKeys } from "./config.js";
 export { structureHash } from "./behavior/structure.js";

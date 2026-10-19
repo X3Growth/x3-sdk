@@ -85,6 +85,12 @@ export type IdentifyData = {
   firstName?: string;
   lastName?: string;
   externalId?: string;
+  /**
+   * Your own id of a lead X3 already knows (CRM record id, your lead/customer id or the X3 lead id):
+   * links this visit – and with consent the visitor's earlier and later visits – to that lead. Sent
+   * as a SHA-256 hash; never creates a lead on its own (see the guide „Lead mit Besuchen verknüpfen“).
+   */
+  leadId?: string;
   /** form the data came from (ID-safe) */
   form?: string;
   /** non-personal traits (≤ 20; e-mail/phone-like values are dropped) */

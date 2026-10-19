@@ -2698,6 +2698,7 @@ declare const TrackingConfigSchema: ZodObject<{
             auto: "auto";
             always: "always";
         }>;
+        visitorIdDays: ZodOptional<ZodNumber>;
     }, $strict>>;
     events: ZodObject<{
         allowUnregistered: ZodBoolean;
@@ -2907,6 +2908,8 @@ type ClientJourneys = {
     clickIds: boolean;
     fbp: boolean;
     ttp: boolean;
+    /** x3_vid lifetime in days (setting capped by the retention); absent in configs of older APIs → 395 */
+    visitorIdDays?: number;
 };
 /** Storage keys derived from the prefix (parity TRACK_STORAGE_KEYS with prefix "cpi_") */
 declare function storageKeys(prefix: string): {
@@ -3235,12 +3238,21 @@ type WireIdentify = {
     fn?: string;
     ln?: string;
     xid?: string;
+    /**
+     * SHA-256 of the site's own lead id (x3.identify({ leadId }): CRM record id, the site's lead id or the
+     * X3 lead id). Links this visit to that lead without creating a lead row (never a fake lead).
+     */
+    lid?: string;
     /** form id the data came from */
     form?: string;
     /** non-personal traits (≤ 20, generic prop rules) */
     tr?: Record<string, PropValue>;
 };
 
+/** SHA-256 hex via WebCrypto (browser and Node ≥ 20) */
+declare function sha256Hex(value: string): Promise<string>;
+/** Stable ids (CRM contact id, …): trimmed */
+declare function normalizeExternalId(raw: unknown): string | null;
 type IdentifierInput = {
     email?: unknown;
     phone?: unknown;
@@ -3422,5 +3434,5 @@ declare function parseForceParam(value: string | null | undefined): Record<strin
 declare const FORCE_PARAM = "x3_force";
 declare const FORCE_TOKEN_PARAM = "x3_force_t";
 
-export { CHOICE_CONTAINER_SELECTOR, CHOICE_INPUT_TYPES, CLICK_ID_KEYS, CLIENT_GEO_HEADER, CONTENTEDITABLE_SELECTOR, EVENT_NAME_PATTERN, EXPERIMENTS_STALE_AFTER_S, FORCE_PARAM, FORCE_TOKEN_PARAM, ID_PATTERN, IMMEDIATE_CLICK_KINDS, INTERACTIVE_SELECTOR, KEY_PATTERN, LANG_PATTERN, MASKED_VALUE, MASK_ALWAYS_SELECTOR, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, X3R_FLAGS, assignExperiment, attributeRule, attributionFromParams, buildAnchor, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, clickTarget, clientSamples, clientTargetingMatches, compileHostMatcher, compileMatcher, compileMatchers, elementText, encodeAttention, encodeScrollTimeline, encodeX3r, formatClientGeoHeader, hashIdentifiers, inFixed, isSafeRegex, isScriptUrl, maskLink, maskShape, normalizeHost, normalizeVideoId, notFoundPage, parseForceParam, pathExcluded, readGeo, scrubPii, sessionFraction, slugify, storageKeys, structureHash, trimProps, validFbCookie, valueRecordable };
+export { CHOICE_CONTAINER_SELECTOR, CHOICE_INPUT_TYPES, CLICK_ID_KEYS, CLIENT_GEO_HEADER, CONTENTEDITABLE_SELECTOR, EVENT_NAME_PATTERN, EXPERIMENTS_STALE_AFTER_S, FORCE_PARAM, FORCE_TOKEN_PARAM, ID_PATTERN, IMMEDIATE_CLICK_KINDS, INTERACTIVE_SELECTOR, KEY_PATTERN, LANG_PATTERN, MASKED_VALUE, MASK_ALWAYS_SELECTOR, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, X3R_FLAGS, assignExperiment, attributeRule, attributionFromParams, buildAnchor, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, clickTarget, clientSamples, clientTargetingMatches, compileHostMatcher, compileMatcher, compileMatchers, elementText, encodeAttention, encodeScrollTimeline, encodeX3r, formatClientGeoHeader, hashIdentifiers, inFixed, isSafeRegex, isScriptUrl, maskLink, maskShape, normalizeExternalId, normalizeHost, normalizeVideoId, notFoundPage, parseForceParam, pathExcluded, readGeo, scrubPii, sessionFraction, sha256Hex, slugify, storageKeys, structureHash, trimProps, validFbCookie, valueRecordable };
 export type { AssignReason, Attribution, AttributionOrigin, BehaviorClientConfig, BookingAdapter, CaptureSignal, ClickKind, ClientConfig, ClientExperiment, ClientExperiments, ClientJourneys, CompiledTrackingConfig, ConversionSource, HeartbeatResponse, JsonValue, MaskPolicy, NavType, NotFoundVia, PropValue, Props, ScrollMarks, ScrollSample, TrackingConfig, VideoFormat, WireAdCookies, WireClickHeat, WireClickIds, WireEvent, WireIdentify, WirePageview, WirePageviewHeat, WireSection, WireVideo, X3rHeader };

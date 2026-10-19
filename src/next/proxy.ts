@@ -22,12 +22,13 @@
  * before it trusts those headers.
  *
  * Consented visitor id (ARCHITECTURE §10.5): `POST /v1/id` is answered here and
- * never forwarded – `{consent:true}` sets/renews the first-party HttpOnly cookie
- * `x3_vid` (13 months, SameSite=Lax, Secure; server-set, so Safari's ITP does not
- * cap it at 7 days), `{consent:false}` deletes it. On `/v1/e|collect` the cookie
- * value is injected into the batch as `vid` ONLY when the batch says
- * `consent: true` (and the cookie renewed); a batch without consent deletes it.
- * The cookie itself never travels upstream.
+ * never forwarded – `{consent:true, days?}` sets/renews the first-party HttpOnly cookie
+ * `x3_vid` (the project's lifetime the SDK sends as `days`, 1–395, default 395 = 13 months;
+ * SameSite=Lax, Secure; server-set, so Safari's ITP does not cap it at 7 days),
+ * `{consent:false}` deletes it. The SDK asks on every page load with consent, which renews
+ * it. On `/v1/e|collect` the cookie value is injected into the batch as `vid` ONLY when the
+ * batch says `consent: true`; a batch without consent deletes it. The cookie itself never
+ * travels upstream.
  *
  * Experiments (BUILD-ADDENDA W): `GET /v1/x/{pk}` (assignments) is forwarded with its query; with
  * `c=1` (the SDK sends it only with consent) the x3_vid value travels server-to-server as
@@ -111,7 +112,8 @@ export function visitorGeo(headers: Headers): string | null {
 const empty = (status: number, headers?: Record<string, string>) => new Response(null, { status, headers: { "cache-control": "no-store", ...headers } });
 
 export const VISITOR_COOKIE = "x3_vid";
-const VISITOR_MAX_AGE_S = 395 * 86_400;
+/** default and maximum lifetime of x3_vid in days (13 months) – the project setting may only shorten it */
+const VISITOR_MAX_DAYS = 395;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Valid x3_vid of the request's Cookie header, else null */
@@ -124,10 +126,15 @@ export function visitorCookie(headers: Headers): string | null {
   return null;
 }
 
+/** Lifetime in days from the /v1/id body (`days`, 1–395); anything else → 395 */
+function visitorDays(raw: unknown): number {
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= 1 && raw <= VISITOR_MAX_DAYS ? raw : VISITOR_MAX_DAYS;
+}
+
 /** Set-Cookie for x3_vid (null = delete); Secure except on plain-http localhost */
-export function visitorSetCookie(value: string | null, url: URL): string {
+export function visitorSetCookie(value: string | null, url: URL, days: number = VISITOR_MAX_DAYS): string {
   const local = url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
-  return `${VISITOR_COOKIE}=${value ?? ""}; Path=/; Max-Age=${value ? VISITOR_MAX_AGE_S : 0}; HttpOnly; SameSite=Lax${local ? "" : "; Secure"}`;
+  return `${VISITOR_COOKIE}=${value ?? ""}; Path=/; Max-Age=${value ? visitorDays(days) * 86_400 : 0}; HttpOnly; SameSite=Lax${local ? "" : "; Secure"}`;
 }
 
 export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
@@ -146,12 +153,15 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
     if (method === "POST" && url.pathname.endsWith("/v1/id")) {
       const text = await readBody(request);
       let consent = false;
+      let days = VISITOR_MAX_DAYS;
       try {
-        consent = (JSON.parse(text ?? "") as { consent?: unknown }).consent === true;
+        const parsed = JSON.parse(text ?? "") as { consent?: unknown; days?: unknown };
+        consent = parsed.consent === true;
+        days = visitorDays(parsed.days);
       } catch {
         // not JSON: treated as no consent
       }
-      return empty(204, { "set-cookie": visitorSetCookie(consent ? (vid ?? crypto.randomUUID()) : null, url), "x-3x-vid": consent ? "1" : "0" });
+      return empty(204, { "set-cookie": visitorSetCookie(consent ? (vid ?? crypto.randomUUID()) : null, url, days), "x-3x-vid": consent ? "1" : "0" });
     }
     const path = proxiedPath(url.pathname, method);
     if (!path) return empty(404);
@@ -179,9 +189,9 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
       if (/^\/v1\/(?:e|collect)$/.test(path)) {
         try {
           const batch = JSON.parse(text as string) as Record<string, unknown>;
+          // renewal happens on /v1/id (with the project's lifetime); a batch only injects the id
           if (batch && batch.consent === true && vid) {
             body = JSON.stringify({ ...batch, vid });
-            setCookie = visitorSetCookie(vid, url);
           } else if (batch && batch.consent === false && vid) {
             setCookie = visitorSetCookie(null, url);
           }

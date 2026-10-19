@@ -1,4 +1,4 @@
-import { cleanIdentifier, hashIdentifiers, ID_PATTERN, PROP_KEY_PATTERN, type Props, type PropValue, type WireIdentify } from "../_core/index.js";
+import { cleanIdentifier, hashIdentifiers, ID_PATTERN, normalizeExternalId, PROP_KEY_PATTERN, sha256Hex, type Props, type PropValue, type WireIdentify } from "../_core/index.js";
 import type { IdentifyData, X3Plugin, X3PluginHost } from "../types";
 import { MAX_TRAITS } from "../core/constants";
 
@@ -36,6 +36,8 @@ export function cleanTraits(raw: unknown): Props {
 export async function hashIdentify(data: IdentifyData, callingCode: string | null): Promise<HashedIdentify | null> {
   if (!globalThis.crypto?.subtle) return null;
   const hashed = await hashIdentifiers(data, callingCode);
+  // leadId: same normalization as externalId (trimmed, ≤ 200 chars), hashed – links the visit, creates no lead
+  const leadId = normalizeExternalId(data.leadId);
   const out: HashedIdentify = {};
   if (hashed.emailSha256) out.em = hashed.emailSha256;
   if (hashed.emailGoogleSha256) out.emg = hashed.emailGoogleSha256;
@@ -43,7 +45,8 @@ export async function hashIdentify(data: IdentifyData, callingCode: string | nul
   if (hashed.firstNameSha256) out.fn = hashed.firstNameSha256;
   if (hashed.lastNameSha256) out.ln = hashed.lastNameSha256;
   if (hashed.externalIdSha256) out.xid = hashed.externalIdSha256;
-  if (!out.em && !out.ph && !out.xid && !out.fn && !out.ln) return null;
+  if (leadId) out.lid = await sha256Hex(leadId);
+  if (!out.em && !out.ph && !out.xid && !out.fn && !out.ln && !out.lid) return null;
   if (typeof data.form === "string" && ID_PATTERN.test(data.form)) out.form = data.form;
   const traits = cleanTraits(data.traits);
   if (Object.keys(traits).length) out.tr = traits;
