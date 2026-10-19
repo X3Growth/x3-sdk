@@ -2695,8 +2695,8 @@ declare const TrackingConfigSchema: ZodObject<{
         clickIds: ZodBoolean;
         adCookies: ZodEnum<{
             off: "off";
-            auto: "auto";
             always: "always";
+            auto: "auto";
         }>;
         visitorIdDays: ZodOptional<ZodNumber>;
     }, $strict>>;
