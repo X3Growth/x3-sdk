@@ -45,6 +45,13 @@ function monogramOf(name) {
   const letters = (Array.from(first)[0] ?? "") + (last !== void 0 ? Array.from(last)[0] ?? "" : Array.from(first)[1] ?? "");
   return letters.toUpperCase() || "?";
 }
+function orgProjectLabel(orgName, projectName, separator = " \xB7 ") {
+  const org = orgName?.trim() ?? "";
+  const project = projectName?.trim() ?? "";
+  if (!org) return project;
+  if (!project || org.localeCompare(project, void 0, { sensitivity: "accent" }) === 0) return org;
+  return `${org}${separator}${project}`;
+}
 export {
   IDENTIFIER_TEXT_PATTERN,
   cleanIdentifier,
@@ -53,5 +60,6 @@ export {
   idSafe,
   monogramOf,
   normalizeVideoId,
+  orgProjectLabel,
   slugify
 };
