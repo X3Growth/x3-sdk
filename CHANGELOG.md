@@ -5,6 +5,12 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Experiments: `GET /v1/x` gets the page view's in-memory id (`pl`) and answers assigned arms with a signed
+  receipt (`v`); `experiment_view` sends both back for day and visitor units. A visitor whose network changed
+  between the assignment and the first collect (mobile networks, iCloud Private Relay) is then verified by the
+  receipt instead of being dropped as a mismatching assignment. Nothing new is stored on the device.
+
 ## [1.0.1] – 2026-10-19
 
 ### Fixed

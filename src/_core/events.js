@@ -81,8 +81,10 @@ const BUILT_IN_EVENTS = [
       a: { type: "string", max: 24, pattern: "^[a-z][a-z0-9_-]{0,23}$" },
       r: { type: "int", min: 0, max: 2e9 },
       u: { type: "enum", values: ["pageload", "day", "visitor"] },
-      /** pageload unit only: the SDK's in-memory page-load id (the server re-derives the bucket from it) */
-      pl: { type: "string", max: 36, pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", optional: true }
+      /** the SDK's in-memory page-load id: pageload units (the server re-derives the bucket from it), day/visitor units with a receipt */
+      pl: { type: "string", max: 36, pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", optional: true },
+      /** signed arm receipt of GET /v1/x for this page view (day/visitor units, C36): verifies the arm after a network switch */
+      v: { type: "string", max: 22, pattern: "^[A-Za-z0-9_-]{22}$", optional: true }
     },
     // dedupe per pageview and key happens in the experiments plugin (a time window would drop the next page's exposure)
     { preset: "experiments", flush: true, dedupe: "none" }
@@ -211,7 +213,7 @@ const EVENT_DESCRIPTIONS = {
   not_found: "A not-found (404) page was shown (auto-capture): the requested canonical path and how it was recognized (marker attribute, x3-status meta tag or title rule). The pageview itself is reported under the project's notFound path.",
   funnel_step: "Generic funnel step reached (funnel key + step key) for funnels driven from code.",
   purchase: "A purchase was completed (shop mode): value \u2265 0, ISO currency, order_id (deduplication \u2013 the same order id is counted once) and optionally the number of items. Every purchase is its own conversion; repeat purchases of the same person count.",
-  experiment_view: "A visitor saw an experiment variant (k = flag key, a = arm, r = config revision, u = unit kind, pl = page-load id of pageload units); sent by x3.variant()/x3.expose(), at most once per pageview and key."
+  experiment_view: "A visitor saw an experiment variant (k = flag key, a = arm, r = config revision, u = unit kind, pl = page-load id, v = signed arm receipt of /v1/x for day/visitor units); sent by x3.variant()/x3.expose(), at most once per pageview and key."
 };
 function stringRule(spec) {
   return spec.pattern ? "pattern" : spec.privacy ?? "identifier";

@@ -24,7 +24,7 @@ export type ExperimentsHost = {
   call(key: string): void;
 };
 
-type Answer = { arm: string; u: string | null; r: AssignReason; p?: Record<string, JsonValue> };
+type Answer = { arm: string; u: string | null; r: AssignReason; p?: Record<string, JsonValue>; v?: string };
 export type Experiments = ExperimentsApi & {
   variant(key: string, options?: { expose?: boolean; fallback?: string }): string;
   experiment(key: string): ExperimentInfo;
@@ -142,7 +142,10 @@ export function createExperiments(host: ExperimentsHost): Experiments {
     exposed.add(key);
     const entry = section()?.list.find((candidate) => candidate.key === key);
     const unit = entry?.scope ?? "day";
-    host.emit({ k: key, a: result.arm, r: section()?.rev ?? 0, u: unit, ...(unit === "pageload" ? { pl: pageload } : {}) });
+    // day/visitor units: the signed receipt of /v1/x and this page view's id go back with the exposure, so
+    // X3 can verify the arm even when the daily hash changed after /v1/x (network switch, C36)
+    const receipt = unit !== "pageload" && result.reason === "assigned" ? answers[key]?.v : undefined;
+    host.emit({ k: key, a: result.arm, r: section()?.rev ?? 0, u: unit, ...(unit === "pageload" || receipt ? { pl: pageload } : {}), ...(receipt ? { v: receipt } : {}) });
   });
 
   const variant = (key: string, options: { expose?: boolean; fallback?: string } = {}): string => {
@@ -159,7 +162,8 @@ export function createExperiments(host: ExperimentsHost): Experiments {
 
   /** GET /v1/x with the page facts (and the QA token); answers merge into `answers`, listeners hear changes */
   const request = (page: { host: string; path: string; lang: string | null }, current: ClientExperiments | null, consented: boolean) => {
-    const query = new URLSearchParams({ h: page.host, p: page.path, cv: String(current?.rev ?? 0), l: page.lang ?? "", t: token ?? "" });
+    // pl: random id of this page view (memory only) – binds the signed arm receipt of the answer to it
+    const query = new URLSearchParams({ h: page.host, p: page.path, cv: String(current?.rev ?? 0), l: page.lang ?? "", t: token ?? "", pl: pageload });
     // channel targeting (server-side): UTM values and which click ids are present – never the ids themselves
     for (const name of ["utm_source", "utm_medium", "utm_campaign", "gclid", "gbraid", "wbraid", "fbclid", "li_fat_id", "ttclid", "msclkid"]) {
       const value = search.get(name);
