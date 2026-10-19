@@ -24,9 +24,12 @@ function normalizeEmailGoogle(raw) {
   if (domain === "gmail.com" || domain === "googlemail.com") return `${local.replace(/\./g, "")}@${domain}`;
   return value;
 }
+function cleanPhoneInput(raw) {
+  return raw.normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/[\p{Zs}\t]/gu, " ").replace(/[‐-―−﹘﹣－]/g, "-").trim().replace(/^(?:tel|callto|phone)\s*:\s*/i, "").replace(/^(?:tel(?:efon)?|phone|mobil|mobile|handy|fon)\.?\s*:?\s*(?=[+(\d])/i, "").replace(/[\s,;]*(?:(?:ext|extension|durchwahl|dw|nst|apparat)\.?\s*:?|x|#)\s*\d{1,6}\s*$/i, "").trim();
+}
 function normalizePhone(raw, defaultCallingCode) {
   if (typeof raw !== "string") return null;
-  const trimmed = raw.trim().replace(/\(\s*0\s*\)/g, "");
+  const trimmed = cleanPhoneInput(raw).replace(/\(\s*0\s*\)/g, "");
   let digits = trimmed.replace(/\D/g, "");
   if (!digits) return null;
   if (trimmed.startsWith("+")) {
@@ -170,6 +173,7 @@ function callingCodeFor(country) {
 export {
   CALLING_CODES,
   callingCodeFor,
+  cleanPhoneInput,
   fbcFromFbclid,
   hashAddressSync,
   hashIdentifiers,
