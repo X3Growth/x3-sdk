@@ -165,15 +165,139 @@ const CALLING_CODES = {
   JP: "81",
   BR: "55",
   MX: "52",
-  ZA: "27"
+  ZA: "27",
+  MT: "356",
+  CY: "357",
+  IS: "354",
+  LI: "423"
 };
+const SIGNUP_PHONE_COUNTRIES_TOP = ["DE", "AT", "CH", "LI"];
+const SIGNUP_PHONE_COUNTRIES_EU = ["BE", "BG", "DK", "EE", "FI", "FR", "GR", "IE", "IS", "IT", "HR", "LV", "LT", "LU", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SK", "SI", "ES", "CZ", "HU", "CY"];
+function phoneCountryForTimeZone(timeZone) {
+  switch (timeZone) {
+    case "Europe/Berlin":
+    case "Europe/Busingen":
+      return "DE";
+    case "Europe/Vienna":
+      return "AT";
+    case "Europe/Zurich":
+      return "CH";
+    case "Europe/Vaduz":
+      return "LI";
+    default:
+      return null;
+  }
+}
+function phoneCountryForLanguage(language) {
+  const match = /^([a-z]{2})(?:-([A-Z]{2}))?/i.exec(language ?? "");
+  if (!match) return null;
+  const region = match[2]?.toUpperCase();
+  if (region && CALLING_CODES[region]) return region;
+  return match[1].toLowerCase() === "de" ? "DE" : null;
+}
+const PHONE_RULES = {
+  "49": { trunk: true, min: 6, max: 13 },
+  "43": { trunk: true, min: 6, max: 13 },
+  "41": { trunk: true, min: 9, max: 9 },
+  "423": { trunk: false, min: 7, max: 9 },
+  "31": { trunk: true, min: 9, max: 9 },
+  "32": { trunk: true, min: 8, max: 9 },
+  "352": { trunk: false, min: 4, max: 11 },
+  "33": { trunk: true, min: 9, max: 9 },
+  "39": { trunk: false, keep0: true, min: 6, max: 11 },
+  "34": { trunk: false, min: 9, max: 9 },
+  "351": { trunk: false, min: 9, max: 9 },
+  "44": { trunk: true, min: 9, max: 10 },
+  "353": { trunk: true, min: 7, max: 9 },
+  "45": { trunk: false, min: 8, max: 8 },
+  "46": { trunk: true, min: 7, max: 9 },
+  "47": { trunk: false, min: 8, max: 8 },
+  "358": { trunk: true, min: 5, max: 12 },
+  "48": { trunk: false, min: 9, max: 9 },
+  "420": { trunk: false, min: 9, max: 9 },
+  "421": { trunk: true, min: 9, max: 9 },
+  "36": { trunk: true, min: 8, max: 9 },
+  "386": { trunk: true, min: 8, max: 8 },
+  "385": { trunk: true, min: 8, max: 9 },
+  "40": { trunk: true, min: 9, max: 9 },
+  "359": { trunk: true, min: 8, max: 9 },
+  "30": { trunk: false, min: 10, max: 10 },
+  "372": { trunk: false, min: 7, max: 8 },
+  "371": { trunk: false, min: 8, max: 8 },
+  "370": { trunk: true, min: 8, max: 8 },
+  "356": { trunk: false, min: 8, max: 8 },
+  "357": { trunk: false, min: 8, max: 8 },
+  "354": { trunk: false, min: 7, max: 9 },
+  "1": { trunk: false, min: 10, max: 10 }
+};
+const DEFAULT_PHONE_RULE = { trunk: true, min: 6, max: 13 };
+let knownCodes = null;
+const isKnownCode = (code) => (knownCodes ?? (knownCodes = new Set(Object.values(CALLING_CODES)))).has(code);
+function splitCallingCode(digits) {
+  for (const length of [3, 2, 1]) {
+    const code = digits.slice(0, length);
+    if (isKnownCode(code)) return { code, national: digits.slice(length) };
+  }
+  return null;
+}
+function parseSignupPhone(raw, callingCode) {
+  const cleaned = cleanPhoneInput(raw).replace(/\(\s*0\s*\)/g, "");
+  const digits = cleaned.replace(/\D/g, "");
+  if (!digits) return { problem: "too_short" };
+  const international = cleaned.startsWith("+") || digits.startsWith("00");
+  let code;
+  let national;
+  if (international) {
+    const plain = digits.replace(/^00/, "");
+    const split = splitCallingCode(plain);
+    if (!split) {
+      if (plain.length < 7 || plain.startsWith("0")) return { problem: "too_short" };
+      return plain.length > 15 ? { problem: "too_long" } : { e164: `+${plain}` };
+    }
+    ({ code, national } = split);
+  } else {
+    if (!callingCode) return { problem: "no_country" };
+    code = callingCode;
+    national = digits;
+  }
+  const rule = PHONE_RULES[code] ?? DEFAULT_PHONE_RULE;
+  if (!rule.keep0) national = national.replace(/^0/, "");
+  if (national.length < rule.min) return { problem: "too_short" };
+  if (national.length > rule.max || code.length + national.length > 15) return { problem: "too_long" };
+  return { e164: `+${code}${national}` };
+}
+function normalizeSignupPhone(raw, callingCode) {
+  if (typeof raw !== "string") return null;
+  const parsed = parseSignupPhone(raw, callingCode);
+  return "e164" in parsed ? parsed.e164 : null;
+}
+function signupPhoneProblem(raw, callingCode, options = {}) {
+  const cleaned = cleanPhoneInput(raw);
+  if (options.browser && /[^\d\s+()\-./]/.test(cleaned)) return "letters";
+  const parsed = parseSignupPhone(raw, callingCode);
+  return "e164" in parsed ? null : parsed.problem;
+}
+function displayPhone(e164, country) {
+  if (!e164) return null;
+  const split = e164.startsWith("+") ? splitCallingCode(e164.slice(1)) : null;
+  if (!split) return e164;
+  const rule = PHONE_RULES[split.code] ?? DEFAULT_PHONE_RULE;
+  if (rule.trunk && callingCodeFor(country) === split.code) {
+    const national = split.national;
+    return national.length > 7 ? `0${national.slice(0, 3)} ${national.slice(3)}` : `0${national}`;
+  }
+  return `+${split.code} ${split.national}`;
+}
 function callingCodeFor(country) {
   return country && CALLING_CODES[country.toUpperCase()] || null;
 }
 export {
   CALLING_CODES,
+  SIGNUP_PHONE_COUNTRIES_EU,
+  SIGNUP_PHONE_COUNTRIES_TOP,
   callingCodeFor,
   cleanPhoneInput,
+  displayPhone,
   fbcFromFbclid,
   hashAddressSync,
   hashIdentifiers,
@@ -188,8 +312,12 @@ export {
   normalizeName,
   normalizePhone,
   normalizePhoneE164,
+  normalizeSignupPhone,
   normalizeState,
   normalizeZip,
+  phoneCountryForLanguage,
+  phoneCountryForTimeZone,
   sha256Hex,
+  signupPhoneProblem,
   validFbCookie
 };
