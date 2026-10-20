@@ -12,9 +12,14 @@ import { attributeRule, CHOICE_INPUT_TYPES, CONTENTEDITABLE_SELECTOR, isScriptUr
  * - images: visible · placeholder
  * Never switchable (floor): password/hidden/file inputs, autocomplete cc-*, one-time-code/…-password,
  * contenteditable, address/[data-x3-mask] and own mask selectors (shape), keystrokes.
+ * Link targets inside [data-x3-mask-links] (a page that carries tenant names in its own paths, e.g. an
+ * app's onboarding) are never recorded, and the page address of the meta event follows the links option.
  */
 
 export type MaskOptions = { profile: "strict" | "balanced"; unmask: string[]; block: string[]; mask?: string[]; p?: MaskPolicy };
+
+/** containers whose link targets are never recorded (any links option) */
+export const MASK_LINKS_SELECTOR = "[data-x3-mask-links]";
 
 const BASE_BLOCK = `[data-x3-block],[data-hj-suppress],[data-clarity-mask],iframe,canvas,video,input[type=password],input[type=file],[autocomplete^=cc-],[autocomplete~=one-time-code],${CONTENTEDITABLE_SELECTOR}`;
 
@@ -102,7 +107,7 @@ export function maskAttributes(attributes: Record<string, unknown>, element: Ele
     } else if (rule === "text") attributes[name] = maskText(value as string, element, options, "attributes");
     else if (rule === "aria") attributes[name] = policy.attributes === "shape" ? MASKED_VALUE : policy.attributes === "pii" ? scrubPii(value as string) : value;
     // stylesheet/sprite hrefs are assets (the server proxies them), every other link target follows the links option
-    else if (rule === "link" && !(lower === "href" && /^(?:link|use|image)$/i.test(tag))) attributes[name] = maskLink(value as string, policy.links);
+    else if (rule === "link" && !(lower === "href" && /^(?:link|use|image)$/i.test(tag))) attributes[name] = element?.closest(MASK_LINKS_SELECTOR) ? MASKED_VALUE : maskLink(value as string, policy.links);
   }
 }
 
@@ -122,6 +127,8 @@ const inputEventAllowed = (element: Element | null, options: MaskOptions): boole
  * the final value per field (rrweb input sampling "last"). Returns null to drop the event.
  */
 export function transformEvent(event: Event, lookup: (id: number) => Element | null, options: MaskOptions): Event | null {
+  // meta: the page address follows the links option (query except utm_*/click ids, id and token segments)
+  if (event.type === 4 && typeof event.data.href === "string") event.data = { ...event.data, href: maskLink(event.data.href, policyOf(options).links) };
   if (event.type === 2 && event.data.node) maskNode(event.data.node as Node, lookup, options);
   if (event.type === 3) {
     const source = event.data.source;

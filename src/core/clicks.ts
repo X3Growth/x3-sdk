@@ -54,6 +54,9 @@ export function classifyClick(target: Element, tag: string, ctx: ClickContext): 
     } catch {
       return { kind: "button" };
     }
+    // [data-x3-mask-links] (an app whose links carry tenant names, keys or addresses): only internal or not,
+    // no target and no contact kind – a mailto in a setup screen is no contact of the site's own visitors
+    if (target.closest("[data-x3-mask-links]")) return { kind: /^https?:$/.test(url.protocol) && ctx.config.isOwnHost(normalizeHost(url.hostname)) ? "internal" : "external" };
     const href = url.href;
     if (url.protocol === "tel:") return { kind: "tel" };
     if (url.protocol === "mailto:") return { kind: "mailto" };
