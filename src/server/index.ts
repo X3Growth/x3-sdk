@@ -10,7 +10,7 @@
  *
  * Secret keys (sk_3x_…) never belong in the browser. Contact data is sent in
  * plaintext over TLS and hashed by the API on receipt (never stored in plaintext).
- * The bundle is self-contained (no zod, no @3x/core/client at runtime).
+ * The bundle is self-contained (no zod, no @3x/client at runtime; pack:staged checks it).
  */
 import { validFbCookie, type ConversionSource } from "../_core/index.js";
 import { fetchAssignments, withLeadRetry, type AssignRequest, type X3Assignments } from "./experiments";

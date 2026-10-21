@@ -15,12 +15,14 @@
  * declarations are emitted and tools resolve from that repo's node_modules.
  */
 import { execFileSync } from "node:child_process";
-import { dirname } from "node:path";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { rollup, type Plugin } from "rollup";
 import { dts } from "rollup-plugin-dts";
+import { selfContainedProblems } from "./pack-check";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const out = `${root}.publish/`;
@@ -171,4 +173,22 @@ mkdirSync(`${root}dist/pkg`, { recursive: true });
 rmSync(`${root}dist/pkg/${TARBALL}`, { force: true });
 execFileSync("npm", ["pack", "--silent", "--pack-destination", `${root}dist/pkg`], { cwd: out, stdio: ["ignore", "ignore", "inherit"] });
 if (!existsSync(`${root}dist/pkg/${TARBALL}`)) throw new Error(`npm pack did not write dist/pkg/${TARBALL}`);
+
+// self-contained (mobile §5.8): no @3x/* in the packed manifest's dependencies, no import of one in any packed file
+const unpacked = mkdtempSync(join(tmpdir(), "x3-sdk-pack-"));
+try {
+  execFileSync("tar", ["-xzf", `${root}dist/pkg/${TARBALL}`, "-C", unpacked]);
+  const base = join(unpacked, "package");
+  const files = readdirSync(base, { recursive: true, encoding: "utf8" })
+    .filter((file) => /\.(c|m)?js$|\.d\.(c|m)?ts$/.test(file))
+    .map((file) => ({ path: file, text: readFileSync(join(base, file), "utf8") }));
+  const problems = selfContainedProblems(JSON.parse(readFileSync(join(base, "package.json"), "utf8")) as Record<string, unknown>, files);
+  if (problems.length) {
+    rmSync(`${root}dist/pkg/${TARBALL}`, { force: true });
+    throw new Error(`the packed SDK is not self-contained:\n  ${problems.join("\n  ")}`);
+  }
+  console.log(`self-contained: ${files.length} packed files checked, no @3x/* dependency or import`);
+} finally {
+  rmSync(unpacked, { recursive: true, force: true });
+}
 console.log(`packed dist/pkg/${TARBALL}`);
