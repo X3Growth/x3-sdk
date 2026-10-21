@@ -644,7 +644,7 @@ export function createTracker(env: TrackerEnv): Tracker {
 
     const target = origin.closest(clickCtx.targets) ?? origin;
     const tag = target.tagName.toLowerCase().slice(0, 20);
-    const { kind, href, app, ext } = classifyClick(target, tag, clickCtx);
+    const { kind, href, app, ext, away } = classifyClick(target, tag, clickCtx);
     const labelsAllowed = !pv.personal && !origin.closest(attrSelector("ignore"));
     const label = labelsAllowed && kind !== "form" ? labelOf(target, kind !== "other") : undefined;
     const section = sectionOf(origin, pv.personal);
@@ -677,7 +677,9 @@ export function createTracker(env: TrackerEnv): Tracker {
       }
       emit(pv, name, props);
     }
-    if (IMMEDIATE_CLICK_KINDS.includes(kind)) flush();
+    // links that leave this document for another origin (also the project's own other hosts, e.g. app.<site>)
+    // are sent at once as well: the unload beacon is not reliable on a cross-origin navigation (TR-46)
+    if (away || IMMEDIATE_CLICK_KINDS.includes(kind)) flush();
   };
 
   /* ------------------------------------------------------------ consent */

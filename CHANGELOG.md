@@ -5,6 +5,11 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Clicks on links to another origin of the project (e.g. from `example.com` to `app.example.com`, both in the
+  project's domains) are sent at once, together with their `data-x3-event` custom event – like external links.
+  Before, they waited for the unload beacon, which a cross-origin navigation can drop (lost `signup_click`).
+
 ## [1.0.2] – 2026-10-19
 
 ### Added

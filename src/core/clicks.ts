@@ -41,7 +41,8 @@ export function downloadPattern(extensions: readonly string[]): RegExp {
   return list.length ? new RegExp(`\\.(?:${list.join("|")})$`, "i") : /$^/;
 }
 
-export type ClickClass = { kind: ClickKind; href?: string; app?: MessagingApp; ext?: string };
+/** away: an own link to another origin (e.g. app.<site>) – a cross-document navigation, sent at once (TR-46) */
+export type ClickClass = { kind: ClickKind; href?: string; app?: MessagingApp; ext?: string; away?: boolean };
 
 const EXT = /\.([a-z0-9]{1,8})$/i;
 
@@ -73,7 +74,7 @@ export function classifyClick(target: Element, tag: string, ctx: ClickContext): 
       return { kind: "download", href: own ? (page && !page.personal ? page.page : undefined) : host || undefined, ext: EXT.exec(url.pathname)?.[1]?.toLowerCase() };
     }
     if (url.hash && url.origin === window.location.origin && url.pathname === window.location.pathname) return { kind: "anchor" };
-    if (own) return { kind: "internal", href: canonicalPage(host, url.pathname, ctx.config)?.page };
+    if (own) return { kind: "internal", href: canonicalPage(host, url.pathname, ctx.config)?.page, away: url.origin !== window.location.origin };
     // outbound links switched off: still a click, the destination is not recorded
     return { kind: "external", href: ctx.outbound ? host || undefined : undefined };
   }
