@@ -96,8 +96,8 @@ function gscBackfillStart(today, months = GSC_LIMITS.defaultBackfillMonths) {
 }
 const REPORT_CHANNELS = ["email", "slack"];
 const REPORT_SCOPES = ["project", "org", "portfolio"];
-const REPORT_SECTIONS = ["kpis", "campaigns", "sources", "recommendations", "tasks", "search"];
-const REPORT_DEFAULT_SECTIONS = ["kpis", "campaigns", "recommendations", "tasks"];
+const REPORT_SECTIONS = ["kpis", "campaigns", "sources", "recommendations", "tasks", "traffic", "search"];
+const REPORT_DEFAULT_SECTIONS = ["kpis", "campaigns", "recommendations", "tasks", "traffic"];
 const REPORT_DELIVERY_KINDS = ["scheduled", "test"];
 const REPORT_DELIVERY_STATES = ["queued", "sending", "sent", "failed", "skipped"];
 const REPORT_DEFAULTS = { weekday: 1, time: "08:00", timezone: "Europe/Berlin" };
