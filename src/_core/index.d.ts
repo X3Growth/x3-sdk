@@ -2911,7 +2911,7 @@ type ClientJourneys = {
     /** x3_vid lifetime in days (setting capped by the retention); absent in configs of older APIs → 395 */
     visitorIdDays?: number;
 };
-/** Storage keys derived from the prefix (parity TRACK_STORAGE_KEYS with prefix "cpi_") */
+/** Storage keys derived from the prefix (parity TRACK_STORAGE_KEYS of the legacy tracker, e.g. prefix "site_") */
 declare function storageKeys(prefix: string): {
     session: string;
     attribution: string;
