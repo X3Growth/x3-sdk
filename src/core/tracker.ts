@@ -62,7 +62,7 @@ import { createBehavior, type ConsentInput } from "./behavior";
 import { compileClient, defaultClientConfig } from "./config";
 import type { Experiments } from "./experiments";
 import { buildBatches, post, type OutboxItem } from "./transport";
-import { coerce, guard, pathValue, readCookie, round1, stableId, storageGet, storageSet, uuid } from "./util";
+import { coerce, consentFromStored, guard, pathValue, readCookie, round1, stableId, storageGet, storageSet, uuid } from "./util";
 import { CLICK_CONTEXT_MS, CONFIG_WAIT_MS, DEDUPE_WINDOW_MS, EXPIRE_MARGIN_MS, FIRST_FLUSH_DELAY_MS, FLUSH_DEBOUNCE_MS, HEARTBEAT_MS, IDLE_AFTER_MS, LABEL_FORWARD_MS, MAX_AGE_MS, MAX_CUSTOM_PROPS, MAX_CUSTOM_STRING_LENGTH, MAX_ENGAGED_MS, MAX_EVENTS_PER_PAGEVIEW, POPSTATE_WINDOW_MS, RESUME_AFTER_HIDDEN_MS, SESSION_TIMEOUT_MS, TICK_MS } from "./constants";
 
 /**
@@ -282,10 +282,8 @@ export function createTracker(env: TrackerEnv): Tracker {
   const readConsentKey = (): ConsentState => {
     const config = cfg?.consent;
     if (!config?.storageKey) return "pending";
-    const value = storageGet("localStorage", config.storageKey);
-    if (value !== null && config.grantedValues.includes(value)) return "granted";
-    if (value !== null && config.deniedValues.includes(value)) return "denied";
-    return "pending";
+    const raw = config.storageSource === "cookie" ? readCookie(config.storageKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) : storageGet("localStorage", config.storageKey);
+    return consentFromStored(raw, config);
   };
 
   const saveSession = () => {
@@ -1192,6 +1190,8 @@ export function createTracker(env: TrackerEnv): Tracker {
     }
     const initial = options?.consent && options.consent !== "pending" ? options.consent : readConsentKey();
     if (initial !== "pending") setConsent(initial);
+    // x3.consent(…) before the config arrived (CMP faster than GET /v1/c): setConsent could not know about journeys yet
+    if (next.journeys && (consent || denied)) requestPlugin("journeys");
 
     setupListeners();
     for (const plugin of pendingPlugins.splice(0)) register(plugin);

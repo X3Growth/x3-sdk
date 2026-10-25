@@ -5,14 +5,24 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
-- Clicks on links to another origin of the project (e.g. from `example.com` to `app.example.com`, both in the
-  project's domains) are sent at once, together with their `data-x3-event` custom event – like external links.
-  Before, they waited for the unload beacon, which a cross-origin navigation can drop (lost `signup_click`).
+## [1.1.0] – 2026-10-25
 
-## [1.0.2] – 2026-10-19
+Includes the changes prepared as 1.0.2, which was never published.
 
 ### Added
+- Dead clicks: a click on a clickable-looking element (a control such as a button, link, tab or menu item,
+  or an element with a pointer cursor) that shows no effect within 1 s (no DOM change including text and
+  state attributes, no scroll, navigation, focus or visibility change and no network request of the page;
+  the SDK's own requests do not count) is sent as dead (`dc` in the pageview's heat state, stored as
+  `heat_clicks.dead`, shown as „Toter Klick“ / dead click in heatmaps, visit lists and alerts). Plain text,
+  form fields, editable areas, disabled buttons, downloads and clicks that open another tab (`target`,
+  modifier keys, middle button) never count. A click the core did not capture no longer reuses the
+  previous click.
+- Consent from the banner's storage as JSON: `consent.storagePath` (dotted path, e.g. `"analytics"` or
+  `"categories.statistics"`) reads a field of a JSON value stored under `consent.storageKey`
+  (`{"analytics":true}`); a boolean there counts as granted/denied. `consent.storageSource: "cookie"` reads
+  a cookie instead of localStorage (URL-encoded JSON works too); only then is `document.cookie` read before
+  consent. Plain values work unchanged.
 - `x3.identify({ leadId })`: links the current visit to a lead X3 already knows – your CRM record id, your
   own lead/customer id or the X3 lead id. Sent as a SHA-256 hash (same normalization as `externalId`); it
   never creates a lead on its own. With consent the visitor id links the visitor's earlier and later visits
@@ -22,11 +32,23 @@ and the package uses [Semantic Versioning](https://semver.org/).
   `days` on `POST /v1/id`.
 
 ### Changed
+- Recordings: answer texts in choice groups (`[data-x3-quiz]`, `role=radiogroup`, `role=listbox`, e.g. tile
+  labels like „ChatGPT“ or „Claude“) follow the page-text option instead of always becoming shapes. Under
+  the choices option `masked` which answer was picked is still never recorded (checked/selected state,
+  `aria-checked`, `data-state`, option and field values). Projects whose page texts are `shape` (sector
+  presets; always under the health preset) keep answer texts as shapes, also inside unmasked areas.
 - First-party proxy (`@x3growth/sdk/next/proxy`): `x3_vid` is set and renewed only on `POST /v1/id` (every
   page load with consent) with the lifetime the SDK sends (1–395 days); consented batches no longer re-set
-  the cookie with a fixed 13 months.
+  the cookie with a fixed 13 months. Sites that proxy through an older SDK version keep 395 days until
+  they update the package.
 
 ### Fixed
+- Journeys: when the consent decision arrived before the project config (`x3("consent", "granted")` or a
+  CMP faster than `GET /v1/c`), the core build never loaded `x3.journeys.js`, so no visitor id, click ids
+  or ad cookies were stored. The core now loads it as soon as the config arrives.
+- Clicks on links to another origin of the project (e.g. from `example.com` to `app.example.com`, both in the
+  project's domains) are sent at once, together with their `data-x3-event` custom event – like external links.
+  Before, they waited for the unload beacon, which a cross-origin navigation can drop (lost `signup_click`).
 - Experiments: `GET /v1/x` gets the page view's in-memory id (`pl`) and answers assigned arms with a signed
   receipt (`v`); `experiment_view` sends both back for day and visitor units. A visitor whose network changed
   between the assignment and the first collect (mobile networks, iCloud Private Relay) is then verified by the

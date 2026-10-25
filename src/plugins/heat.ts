@@ -1,5 +1,5 @@
 import { encodeAttention, encodeScrollTimeline, type ScrollSample, type WirePageviewHeat } from "../_core/index.js";
-import { buildAnchor, clickTarget, structureHash } from "../_core/index.js";
+import { buildAnchor, clickTarget, INTERACTIVE_SELECTOR, structureHash } from "../_core/index.js";
 import type { TrackedPageview, X3Plugin, X3PluginHost } from "../types";
 
 /**
@@ -11,6 +11,50 @@ import type { TrackedPageview, X3Plugin, X3PluginHost } from "../types";
  */
 
 type S = { h: WirePageviewHeat; st: ScrollSample[]; t: number; top: number; good: number; ab: number[]; sec: Array<[Element, string | null]>; clicks: number[][] };
+
+/** the window in which a click must show an effect (§5.2) */
+export const DEAD_WINDOW_MS = 1e3;
+const CONTROL = `${INTERACTIVE_SELECTOR},[role=checkbox],[role=radio],[role=switch],[role=option],[onclick]`;
+const NEVER_DEAD = "input,textarea,select,label,[contenteditable],video,audio,iframe";
+
+/**
+ * A click that may count as dead: on a control or an element that looks clickable (pointer cursor), not on
+ * a form field or editable text (typing and focus follow), not a click that opens another tab or window
+ * (modifier keys, middle button, target=_blank, download) and not on a link that leaves the page by design.
+ */
+export function deadCandidate(target: EventTarget | null, mouse?: MouseEvent): boolean {
+  const el = target instanceof Element ? target : target instanceof Node ? target.parentElement : null;
+  if (!el || el.closest(NEVER_DEAD)) return false;
+  if (mouse && (mouse.ctrlKey || mouse.metaKey || mouse.shiftKey || mouse.altKey || mouse.button > 0)) return false;
+  const link = el.closest("a[href]") as HTMLAnchorElement | null;
+  if (link && ((link.target && link.target !== "_self") || link.hasAttribute("download") || !/^https?:/.test(link.protocol))) return false;
+  if (el.closest(CONTROL)) return !(el.closest("button,[role=button]") as HTMLButtonElement | null)?.disabled;
+  try {
+    return getComputedStyle(el).cursor === "pointer";
+  } catch {
+    return false;
+  }
+}
+
+/** Calls `onRequest` when the page itself starts a request (fetch, XHR, script, image …) – the SDK's own beacons do not count; returns the stop function */
+export function watchNetwork(apiHost: string, onRequest: () => void): () => void {
+  if (typeof PerformanceObserver === "undefined") return () => undefined;
+  let own = "";
+  try {
+    if (apiHost) own = new URL(apiHost, location.href).href.replace(/\/$/, "");
+  } catch {
+    // no API root: every request counts
+  }
+  try {
+    const observer = new PerformanceObserver((list) => {
+      if (list.getEntries().some((entry) => (entry as PerformanceResourceTiming).initiatorType !== "beacon" && !(own && entry.name.startsWith(own)))) onRequest();
+    });
+    observer.observe({ type: "resource" });
+    return () => observer.disconnect();
+  } catch {
+    return () => undefined;
+  }
+}
 
 const hex = (bytes: ArrayBuffer | Uint8Array) => Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -103,27 +147,36 @@ export function heat(): X3Plugin {
           delete states[pv.id];
         },
       });
-      // dead and rage clicks (§5.2): no structural change, scroll, navigation or focus change within 1 s; ≥ 3 in 700 ms within 30 px
+      // dead and rage clicks (§5.2): rage = ≥ 3 in 700 ms within 30 px; dead = a click on a clickable-looking
+      // element (control or pointer cursor) with no visible effect within 1 s: no DOM change (structure,
+      // state attributes, text), no scroll, navigation, focus change and no network request of the page
+      let seen: unknown = null;
       host.listen(document, "click", (event) => {
         const pv = host.current();
         const clicked = b.last;
-        if (!pv || !clicked || !ok("clicks")) return;
+        // b.last is the click event the core queued for THIS click; a click the core did not capture leaves the previous one
+        if (!pv || !clicked || clicked === seen || !ok("clicks")) return;
+        seen = clicked;
         const s = state(pv);
-        const { clientX: x, clientY: y } = event as MouseEvent;
+        const mouse = event as MouseEvent;
+        const { clientX: x, clientY: y } = mouse;
         const now = Date.now();
         s.clicks = s.clicks.filter((c) => now - (c[0] as number) < 700);
         const near = s.clicks.filter((c) => Math.hypot((c[1] as number) - x, (c[2] as number) - y) <= 30);
         const first = (near[0]?.[3] ?? clicked.n) as number;
         s.clicks.push([now, x, y, first]);
         if (near.length > 1) s.h.rc = [...(s.h.rc ?? []).filter((r) => r[0] !== first), [first, near.length + 1]];
+        if (!deadCandidate(event.target, mouse) || (s.h.dc?.length ?? 0) >= 50) return;
         let moved = false;
-        const before = [scrollY, location.href, document.activeElement];
+        const before = [scrollY, location.href, document.activeElement, document.visibilityState];
         const observer = new MutationObserver(() => ((moved = true), observer.disconnect()));
-        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "aria-expanded", "aria-hidden", "data-state", "open", "hidden", "style"] });
+        observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "aria-expanded", "aria-hidden", "aria-pressed", "aria-selected", "data-state", "open", "hidden", "style", "disabled"] });
+        const net = watchNetwork(host.apiHost(), () => (moved = true));
         setTimeout(() => {
           observer.disconnect();
-          if (!moved && before[0] === scrollY && before[1] === location.href && before[2] === document.activeElement && (s.h.dc?.length ?? 0) < 50) (s.h.dc ??= []).push(clicked.n);
-        }, 1e3);
+          net();
+          if (!moved && before[0] === scrollY && before[1] === location.href && before[2] === document.activeElement && before[3] === document.visibilityState && (s.h.dc?.length ?? 0) < 50) (s.h.dc ??= []).push(clicked.n);
+        }, DEAD_WINDOW_MS);
       }, { capture: true });
       // WhatsApp reference code in the prefilled text (§11.1, idea 49): on window in the capture phase, so the
       // link carries it before the core emits (WhatsApp clicks are sent at once) and fin adds it to the click

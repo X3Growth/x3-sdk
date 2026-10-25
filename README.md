@@ -60,6 +60,11 @@ await identify({ email: "max@example.com", form: "contact" }); // hashed in the 
 consent("granted");
 ```
 
+If your cookie banner stores its decision, the project's consent settings can read it without code:
+`storageKey` (localStorage key, or a cookie with `storageSource: "cookie"`), plain values or JSON with a
+dotted `storagePath` (e.g. `{"analytics":true}` → `storagePath: "analytics"`). See
+[Consent](https://api.x3growth.io/v1/docs/sdk/consent.md).
+
 Plugins load on demand from the project config; to bundle them explicitly:
 
 ```ts

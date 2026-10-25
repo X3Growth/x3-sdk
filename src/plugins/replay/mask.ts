@@ -6,7 +6,8 @@ import { attributeRule, CHOICE_INPUT_TYPES, CONTENTEDITABLE_SELECTOR, isScriptUr
  * The project chooses per category (policy `p`, test/internal sessions may get the relaxed `t`):
  * - texts: shape („Xxxxx xxx“) · visible with PII filter · visible; unmask selectors make shapes readable (PII filtered)
  * - inputs: masked (never, not even the length; only „Feld bearbeitet“) · final value with PII filter · final value
- * - choices: masked (checked/selected state removed, widget state constant, answer texts as shapes) · visible
+ * - choices: masked (checked/selected state removed, widget state constant; answer texts follow the text option,
+ *   shapes under „shape“) · visible
  * - attributes (alt/title/placeholder/aria-label/data-…): shape · PII filter · visible
  * - links: scrubbed (mailto/tel, query except utm_…, click ids, id/token segments) · PII filter · complete
  * - images: visible · placeholder
@@ -65,8 +66,10 @@ export function maskText(text: string, element: Element | null, options: MaskOpt
   if (!element?.closest(specialSelector(options))) return byOption(option, text);
   if (element.closest(CONTENTEDITABLE_SELECTOR)) return MASKED_VALUE;
   if (element.closest(alwaysSelector(options))) return maskShape(text);
-  if (policy.choices === "masked" && element.closest(CHOICE_CONTAINER_SELECTOR)) return maskShape(text);
+  // answer texts (choice labels like „ChatGPT“, „Claude“) are page texts, not personal data: they follow the
+  // text option; under „shape“ (sector presets, always under health) they stay shapes, even in unmasked areas
   if (option !== "shape") return byOption(option, text);
+  if (policy.choices === "masked" && element.closest(CHOICE_CONTAINER_SELECTOR)) return maskShape(text);
   return element.closest(unmaskSelector(options)) ? scrubPii(text) : maskShape(text);
 }
 

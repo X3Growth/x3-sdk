@@ -104,6 +104,32 @@ export function pathValue(source: unknown, path: string): unknown {
   return value;
 }
 
+/**
+ * Consent state from the banner's stored value (consent.storageKey): a plain value ("accepted") or JSON
+ * (`{"analytics":true}`, `{"categories":{"statistics":"yes"}}`) read at consent.storagePath. Strings and
+ * numbers are compared with grantedValues/deniedValues; a boolean counts as granted/denied unless the
+ * lists name "true"/"false" themselves.
+ */
+export function consentFromStored(raw: string | null, config: { storagePath?: string; grantedValues: readonly string[]; deniedValues: readonly string[] }): "granted" | "denied" | "pending" {
+  if (raw === null) return "pending";
+  const match = (text: string) => (config.grantedValues.includes(text) ? "granted" : config.deniedValues.includes(text) ? "denied" : null);
+  // the raw text first: a banner that stores "true" or "accepted" keeps working unchanged
+  if (!config.storagePath) {
+    const plain = match(raw);
+    if (plain) return plain;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return "pending";
+  }
+  const value = pathValue(parsed, config.storagePath ?? "");
+  if (typeof value === "string" || typeof value === "number") return match(String(value)) ?? "pending";
+  if (typeof value === "boolean") return match(String(value)) ?? (value ? "granted" : "denied");
+  return "pending";
+}
+
 /** "42" → 42, "true" → true – data-x3-prop-* values */
 export function coerce(value: string): string | number | boolean {
   if (value === "true" || value === "false") return value === "true";

@@ -2608,6 +2608,11 @@ declare const TrackingConfigSchema: ZodObject<{
             require: "require";
         }>;
         storageKey: ZodNullable<ZodString>;
+        storageSource: ZodOptional<ZodEnum<{
+            localStorage: "localStorage";
+            cookie: "cookie";
+        }>>;
+        storagePath: ZodOptional<ZodString>;
         grantedValues: ZodArray<ZodString>;
         deniedValues: ZodArray<ZodString>;
         windowEvent: ZodNullable<ZodObject<{
