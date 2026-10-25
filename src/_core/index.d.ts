@@ -3285,7 +3285,7 @@ declare function validFbCookie(value: unknown, kind: "fbc" | "fbp" | "ttp"): str
  */
 /** funnel sources (quiz, booking, whatsapp_manual, manual) + generic triggers */
 /** `purchase` (round kv, S): shop purchases (purchases.create, SDK event purchase) */
-declare const CONVERSION_SOURCES: readonly ["quiz", "booking", "whatsapp_manual", "manual", "event", "goal", "lead", "api", "purchase"];
+declare const CONVERSION_SOURCES: readonly ["quiz", "booking", "whatsapp_manual", "manual", "event", "goal", "lead", "api", "purchase", "leadmagnet"];
 type ConversionSource = (typeof CONVERSION_SOURCES)[number];
 
 /** Deterministic [0, 1) from a session id (FNV-1a 32 bit) – the same session always lands on the same side */
