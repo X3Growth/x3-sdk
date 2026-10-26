@@ -3314,8 +3314,8 @@ declare function formatClientGeoHeader(geo: GeoFacts): string;
 /** Proxy header first (only when the proxy is verified), then Vercel, then Cloudflare */
 declare function readGeo(get: HeaderGet, viaProxy: boolean): GeoFacts | null;
 
-/** heartbeat rates: 0 = nobody watches, 0.2 = grouped density only, 1 = individual frames */
-declare const LIVE_HZ: readonly [0, 0.2, 1];
+/** heartbeat rates: 0 = nobody watches (or not in a sample), 0.2 = grouped density only, 1 = individual frames, 2 = shown on a board (frames every 500 ms; only for SDKs that send `v=2`) */
+declare const LIVE_HZ: readonly [0, 0.2, 1, 2];
 type LiveHz = (typeof LIVE_HZ)[number];
 type HeartbeatResponse = {
     hz: LiveHz;

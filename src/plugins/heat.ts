@@ -165,7 +165,10 @@ export function heat(): X3Plugin {
         const near = s.clicks.filter((c) => Math.hypot((c[1] as number) - x, (c[2] as number) - y) <= 30);
         const first = (near[0]?.[3] ?? clicked.n) as number;
         s.clicks.push([now, x, y, first]);
-        if (near.length > 1) s.h.rc = [...(s.h.rc ?? []).filter((r) => r[0] !== first), [first, near.length + 1]];
+        if (near.length > 1) {
+          s.h.rc = [...(s.h.rc ?? []).filter((r) => r[0] !== first), [first, near.length + 1]];
+          b.flag?.(clicked, 1);
+        }
         if (!deadCandidate(event.target, mouse) || (s.h.dc?.length ?? 0) >= 50) return;
         let moved = false;
         const before = [scrollY, location.href, document.activeElement, document.visibilityState];
@@ -175,7 +178,10 @@ export function heat(): X3Plugin {
         setTimeout(() => {
           observer.disconnect();
           net();
-          if (!moved && before[0] === scrollY && before[1] === location.href && before[2] === document.activeElement && before[3] === document.visibilityState && (s.h.dc?.length ?? 0) < 50) (s.h.dc ??= []).push(clicked.n);
+          if (!moved && before[0] === scrollY && before[1] === location.href && before[2] === document.activeElement && before[3] === document.visibilityState && (s.h.dc?.length ?? 0) < 50) {
+            (s.h.dc ??= []).push(clicked.n);
+            b.flag?.(clicked, 2);
+          }
         }, DEAD_WINDOW_MS);
       }, { capture: true });
       // WhatsApp reference code in the prefilled text (§11.1, idea 49): on window in the capture phase, so the

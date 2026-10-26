@@ -41,6 +41,8 @@ export type BehaviorBridge = {
   secret?: string;
   key(): string;
   last?: WireEvent & { h?: WireClickHeat };
+  /** the heat plugin's verdict on a click (1 rage, 2 dead after 1 s without reaction); the live plugin forwards it to the board */
+  flag?: (click: WireEvent, kind: 1 | 2) => void;
 };
 
 

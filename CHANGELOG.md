@@ -5,6 +5,22 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] – 2026-10-26
+
+### Added
+- Live: precise pointer paths for the live board. While somebody watches and the visitor may be shown
+  (liveIndividual and pointer levels), pointer moves are coalesced to one sample per 60 ms (about 16 Hz),
+  the last position of a burst always lands, a scroll with a resting pointer adds a sample; samples go
+  delta-encoded in `m` (x ‰ of the viewport width, y ‱ of the page height, coordinates only, never text),
+  at most 24 per frame, nothing while the tab is hidden.
+- Live: frames every 500 ms for a visitor shown on a board (heartbeat answer `hz: 2`, announced with `v=2`),
+  1 Hz for the pointer sample; a frame without any change is skipped (one keep-alive every 5 s).
+- Live: rage clicks (kind 1) and dead clicks (kind 2, after 1 s without reaction) reach the board as such.
+
+### Changed
+- Live: which visitors send frames and band beats is decided by the server's samples (bounded request
+  rate at very high traffic); older SDKs keep working with their 4 Hz cursor list `u`.
+
 ## [1.1.0] – 2026-10-25
 
 Includes the changes prepared as 1.0.2, which was never published.
