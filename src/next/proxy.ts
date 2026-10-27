@@ -30,6 +30,13 @@
  * batch says `consent: true`; a batch without consent deletes it. The cookie itself never
  * travels upstream.
  *
+ * App tracking (iOS / Android SDKs, 1.3.0): the app endpoints `/v1/m/*` (config, batch, install,
+ * lead, erase, attest, challenge; recording packets `/v1/m/r`) – POST bodies forwarded as bytes (they may
+ * be gzip, `content-encoding` is passed on); X3 links `<prefix>/go/<code>` and `/v1/go/<ref>` (the
+ * API's 302 and its `location` are passed through, never followed); Apple postback copies
+ * `POST /.well-known/appattribution/<endpoint>` and `/.well-known/skadnetwork/<endpoint>` (mount the same
+ * handler on those paths) → `/v1/m/postbacks/aak|skan/<endpoint>`.
+ *
  * Experiments (BUILD-ADDENDA W): `GET /v1/x/{pk}` (assignments) is forwarded with its query; with
  * `c=1` (the SDK sends it only with consent) the x3_vid value travels server-to-server as
  * `x-3x-vid`, so visitor-sticky experiments work although the cookie is HttpOnly.
@@ -56,14 +63,25 @@ export type X3ProxyHandler = {
 
 const MAX_BODY_BYTES = 65_536;
 const SCRIPT_CACHE = "public, max-age=3600, stale-while-revalidate=86400";
-const FORWARDED_REQUEST_HEADERS = ["user-agent", "origin", "content-type", "accept", "accept-language", "referer"];
+const FORWARDED_REQUEST_HEADERS = ["user-agent", "origin", "content-type", "content-encoding", "accept", "accept-language", "referer"];
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "cache-control", "etag", "last-modified", "retry-after", "x-3x-request-id"];
+
+const LINK_REF = /^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/;
+const POSTBACK_ENDPOINT = /^[a-z-]{1,40}$/;
 
 /** "/v1/…" part of the incoming path when it is one the SDK uses, else null */
 export function proxiedPath(pathname: string, method: string): string | null {
+  // Apple postback copies (app tracking): the well-known paths of the customer's domain, trailing slash allowed
+  const wellKnown = /^\/\.well-known\/(appattribution|skadnetwork)\/([a-z-]{1,40})\/?$/.exec(pathname);
+  if (wellKnown) return method === "POST" && POSTBACK_ENDPOINT.test(wellKnown[2] as string) ? `/v1/m/postbacks/${wellKnown[1] === "appattribution" ? "aak" : "skan"}/${wellKnown[2]}` : null;
+  // X3 links: <prefix>/go/<code> (and /v1/go/<ref>)
+  const link = /\/go\/([^/]+)\/?$/.exec(pathname);
+  if (link && method === "GET" && LINK_REF.test(link[1] as string) && (pathname.includes("/v1/go/") || !pathname.includes("/v1/"))) return `/v1/go/${link[1]}`;
   const index = pathname.indexOf("/v1/");
   if (index < 0) return null;
   const path = pathname.slice(index);
+  if (method === "POST" && /^\/v1\/m\/(?:batch|install|lead|erase|attest|r)$/.test(path)) return path;
+  if (method === "GET" && /^\/v1\/m\/(?:config|challenge)\/pk_3x_[0-9A-Za-z]{30}$/.test(path)) return path;
   if (method === "POST") return /^\/v1\/(?:e|collect|cb|r|r\/css|l|snap|snap\/session)$/.test(path) || /^\/v1\/privacy\/pk_3x_[0-9A-Za-z]{30}\/(?:erase|export)$/.test(path) ? path : null;
   if (method === "GET") return /^\/v1\/(?:c|hb|privacy|x)\/pk_3x_[0-9A-Za-z]{30}$/.test(path) || /^\/v1\/s\/x3(?:\.[a-z]+)?(?:@[0-9A-Za-z.-]+)?\.js$/.test(path) ? path : null;
   return null;
@@ -88,8 +106,12 @@ export function visitorCountry(headers: Headers): string | null {
 
 /** Body limits per path: recording packets 1 MB (X3R_MAX_PACKET), owner snapshots 4 MB (Vercel's request limit is 4.5 MB) */
 function bodyLimit(path: string): number {
-  return path === "/v1/r" ? 1024 * 1024 : path === "/v1/snap" ? 4 * 1024 * 1024 : MAX_BODY_BYTES;
+  if (path.startsWith("/v1/m/postbacks/")) return 16 * 1024;
+  return path === "/v1/r" || path === "/v1/m/r" ? 1024 * 1024 : path === "/v1/snap" ? 4 * 1024 * 1024 : MAX_BODY_BYTES;
 }
+
+/** App endpoints: bodies are bytes (gzip allowed), never decoded as text */
+const binaryBody = (path: string) => path === "/v1/r" || /^\/v1\/m\/(?:batch|install|lead|erase|attest|r)$/.test(path);
 
 async function readBytes(request: Request, max = MAX_BODY_BYTES): Promise<ArrayBuffer | null> {
   const declared = Number(request.headers.get("content-length") ?? "0");
@@ -183,7 +205,7 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
     let setCookie: string | null = null;
     if (method === "POST") {
       // recording packets are binary (X3R1 + gzip): forwarded byte for byte
-      const text = path === "/v1/r" ? await readBytes(request, bodyLimit(path)) : await readBody(request, bodyLimit(path));
+      const text = binaryBody(path) ? await readBytes(request, bodyLimit(path)) : await readBody(request, bodyLimit(path));
       if (text === null) return empty(413);
       body = text;
       if (/^\/v1\/(?:e|collect)$/.test(path)) {
@@ -199,9 +221,9 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
           // forwarded unchanged; the API answers 400
         }
       }
-      if (!headers.has("content-type")) headers.set("content-type", "text/plain;charset=UTF-8");
+      if (!headers.has("content-type")) headers.set("content-type", path.startsWith("/v1/m/") ? (path === "/v1/m/r" ? "application/octet-stream" : "application/json") : "text/plain;charset=UTF-8");
     }
-    const query = /^\/v1\/(?:s|hb|x)\//.test(path) ? url.search : "";
+    const query = /^\/v1\/(?:s|hb|x|go|m\/config)\//.test(path) ? url.search : "";
     if (path.startsWith("/v1/x/") && vid && url.searchParams.get("c") === "1") headers.set("x-3x-vid", vid);
 
     let upstream: Response;
@@ -224,6 +246,12 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
     // scripts with an inlined config (?k=) keep the API's shorter cache time, so config changes arrive quickly
     if (path.startsWith("/v1/s/") && upstream.ok && !(url.searchParams.has("k") && out.has("cache-control"))) out.set("cache-control", SCRIPT_CACHE);
     if (!out.has("cache-control")) out.set("cache-control", "no-store");
+    // X3 links: the store redirect of the API reaches the browser unchanged
+    if (path.startsWith("/v1/go/")) {
+      const location = upstream.headers.get("location");
+      if (location) out.set("location", location);
+      out.set("referrer-policy", "no-referrer");
+    }
     if (setCookie) out.set("set-cookie", setCookie);
     const payload = upstream.status === 204 || upstream.status === 304 ? null : await upstream.arrayBuffer();
     return new Response(payload, { status: upstream.status, headers: out });

@@ -30,6 +30,7 @@ function encodeX3r(header, gzipped) {
   return out;
 }
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function parseX3r(bytes) {
   if (bytes.length < 8 || bytes.length > X3R_MAX_PACKET) return null;
   if (decoder.decode(bytes.subarray(0, 4)) !== X3R_MAGIC) return null;
@@ -67,7 +68,10 @@ function parseX3r(bytes) {
       ...cp ? { cp: { cmp: typeof cp.cmp === "string" ? cp.cmp.slice(0, 40) : null, purpose: typeof cp.purpose === "string" ? cp.purpose.slice(0, 60) : "recordings", ts: typeof cp.ts === "number" ? cp.ts : 0, id: typeof cp.id === "string" ? cp.id.slice(0, 80) : null } } : {},
       ...h.ho === 1 ? { ho: 1 } : {},
       ...h.t === 1 ? { t: 1 } : {},
-      ...typeof h.mv === "number" && Number.isInteger(h.mv) && h.mv >= 0 && h.mv < 1e6 ? { mv: h.mv } : {}
+      ...typeof h.mv === "number" && Number.isInteger(h.mv) && h.mv >= 0 && h.mv < 1e6 ? { mv: h.mv } : {},
+      ...h.plat === "ios" || h.plat === "android" ? { plat: h.plat } : {},
+      ...typeof h.ins === "string" && UUID4.test(h.ins) ? { ins: h.ins.toLowerCase() } : {},
+      ...h.cm === "always" || h.cm === "opt_in" || h.cm === "opt_out" ? { cm: h.cm } : {}
     },
     body: bytes.subarray(6 + length)
   };

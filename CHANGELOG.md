@@ -5,6 +5,19 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.3.0] – 2026-10-27
+
+### Added
+- `createX3ProxyHandler` (`@x3growth/sdk/next/proxy`) forwards the app endpoints of the iOS and Android
+  SDKs: `/v1/m/config/{pk}`, `/v1/m/challenge/{pk}`, `POST /v1/m/batch|install|lead|erase|attest` (bodies as
+  bytes, `content-encoding` passed on, 64 KiB) and recording packets `POST /v1/m/r` (1 MiB).
+- X3 links through the first-party domain: `GET <prefix>/go/<code>` and `/v1/go/<ref>` with the query; the
+  API's 302 and its `location` reach the browser unchanged (never followed by the proxy).
+- Apple postback copies: mount the same handler on `/.well-known/appattribution/[...path]` and
+  `/.well-known/skadnetwork/[...path]`; `POST /.well-known/appattribution/<endpoint>` goes to
+  `/v1/m/postbacks/aak/<endpoint>`, `/.well-known/skadnetwork/<endpoint>` to `/v1/m/postbacks/skan/<endpoint>`
+  (16 KiB, trailing slash allowed).
+
 ## [1.2.0] – 2026-10-26
 
 ### Added

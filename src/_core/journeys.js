@@ -5,13 +5,13 @@ var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { en
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 import { CLICK_ID_KEYS } from "./attribution.js";
 const JOURNEY_LINK_REASONS = ["consent_vid", "click_id", "identity", "daily_hash", "manual"];
-const JOURNEY_KEY_KINDS = ["vid", "fbp", "ttp", ...CLICK_ID_KEYS, "email", "phone", "external_id", "visitor_hash", "manual"];
+const JOURNEY_KEY_KINDS = ["vid", "fbp", "ttp", ...CLICK_ID_KEYS, "email", "phone", "external_id", "visitor_hash", "manual", "install"];
 const CLICK_KIND_SET = new Set(CLICK_ID_KEYS);
 function isClickKind(kind) {
   return CLICK_KIND_SET.has(kind);
 }
 function reasonOfKind(kind) {
-  if (kind === "vid" || kind === "fbp" || kind === "ttp") return "consent_vid";
+  if (kind === "vid" || kind === "fbp" || kind === "ttp" || kind === "install") return "consent_vid";
   if (kind === "email" || kind === "phone" || kind === "external_id") return "identity";
   if (kind === "visitor_hash") return "daily_hash";
   if (kind === "manual") return "manual";
@@ -39,7 +39,8 @@ const JOURNEY_KEY_CAPS = {
   phone: 500,
   external_id: 500,
   visitor_hash: 8,
-  manual: 1e4
+  manual: 1e4,
+  install: 2e3
 };
 const JOURNEY = {
   /** a journey stops growing beyond this many sessions (a key may still be recorded) */

@@ -3001,7 +3001,7 @@ type PropSpec = {
     optional?: boolean;
 };
 type DedupeMode = "none" | "name" | "name_props";
-type EventPreset = "core" | "forms" | "video" | "quiz" | "cta" | "messaging" | "calculator" | "booking" | "funnel" | "shop" | "experiments";
+type EventPreset = "core" | "forms" | "video" | "quiz" | "cta" | "messaging" | "calculator" | "booking" | "funnel" | "shop" | "experiments" | "app";
 type EventDefinition = {
     name: string;
     props: Readonly<Record<string, PropSpec>>;
@@ -3398,6 +3398,12 @@ type X3rHeader = {
     t?: 1;
     /** version of the masking rules the recorder applied (AC) */
     mv?: number;
+    /** app tracking (POST /v1/m/r): platform of the app SDK */
+    plat?: "ios" | "android";
+    /** app tracking: install id (uuid v4) */
+    ins?: string;
+    /** app tracking: consent mode the app developer chose */
+    cm?: "always" | "opt_in" | "opt_out";
 };
 declare function encodeX3r(header: X3rHeader, gzipped: Uint8Array): Uint8Array;
 

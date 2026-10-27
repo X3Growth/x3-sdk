@@ -69,10 +69,18 @@ const BUILT_IN_EVENTS = [
       value: { type: "number", min: 0, max: 1e9 },
       currency: { type: "string", max: 3, pattern: "^[A-Z]{3}$" },
       order_id: { type: "string", max: 100, pattern: "^[A-Za-z0-9_.:#/-]{1,100}$" },
-      items: { type: "int", min: 0, max: 1e4, optional: true }
+      items: { type: "int", min: 0, max: 1e4, optional: true },
+      /** app purchases (X3.purchase): store product id and the store */
+      product: { type: "string", max: 80, pattern: "^[A-Za-z0-9_.:-]{1,80}$", optional: true },
+      store: { type: "enum", values: ["apple", "google", "other"], optional: true }
     },
     { preset: "shop", dedupe: "name_props", flush: true }
   ),
+  // app tracking (iOS / Android SDKs, SPEC §C2.6): emitted by the app SDKs, never by the browser
+  def("app_install", {}, { preset: "app", oncePerPageview: true, dedupe: "none" }),
+  def("app_open", { cold: { type: "bool" } }, { preset: "app", dedupe: "none" }),
+  def("app_update", { from: { type: "string", max: 40, pattern: "^[A-Za-z0-9_.:-]{1,40}$" } }, { preset: "app", dedupe: "none" }),
+  def("deep_link_open", { x3: { type: "bool" } }, { preset: "app", dedupe: "none" }),
   // experiment exposure (BUILD-ADDENDA W): sent by x3.variant()/x3.expose(), at most once per pageview and key
   def(
     "experiment_view",
@@ -212,7 +220,11 @@ const EVENT_DESCRIPTIONS = {
   booking: "A meeting was booked (booking adapters: postMessage embeds, window events, thank-you pages, Calendly).",
   not_found: "A not-found (404) page was shown (auto-capture): the requested canonical path and how it was recognized (marker attribute, x3-status meta tag or title rule). The pageview itself is reported under the project's notFound path.",
   funnel_step: "Generic funnel step reached (funnel key + step key) for funnels driven from code.",
-  purchase: "A purchase was completed (shop mode): value \u2265 0, ISO currency, order_id (deduplication \u2013 the same order id is counted once) and optionally the number of items. Every purchase is its own conversion; repeat purchases of the same person count.",
+  purchase: "A purchase was completed (shop mode): value \u2265 0, ISO currency, order_id (deduplication \u2013 the same order id is counted once) and optionally the number of items; app purchases add product and store (apple, google, other) and wait for the store or server confirmation. Every purchase is its own conversion; repeat purchases of the same person count.",
+  app_install: "App tracking: the first session of an install (once per install id, sent by the iOS/Android SDK).",
+  app_open: "App tracking: start of every app session; cold = process start (else return from the background).",
+  app_update: "App tracking: the first session after the app version changed; from = the previous version.",
+  deep_link_open: "App tracking: the app was opened by a link (handleOpenURL); x3 = the link carried X3 attribution.",
   experiment_view: "A visitor saw an experiment variant (k = flag key, a = arm, r = config revision, u = unit kind, pl = page-load id, v = signed arm receipt of /v1/x for day/visitor units); sent by x3.variant()/x3.expose(), at most once per pageview and key."
 };
 function stringRule(spec) {

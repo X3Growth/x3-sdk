@@ -33,6 +33,10 @@ const EVENT_LABELS = {
   booking: { en: "Meeting booked", de: "Termin gebucht" },
   funnel_step: { en: "Funnel step", de: "Trichterschritt" },
   purchase: { en: "Purchase", de: "Kauf" },
+  app_install: { en: "App installed", de: "App installiert" },
+  app_open: { en: "App opened", de: "App ge\xF6ffnet" },
+  app_update: { en: "App updated", de: "App aktualisiert" },
+  deep_link_open: { en: "Opened via link", de: "\xDCber Link ge\xF6ffnet" },
   not_found: { en: "Page not found (404)", de: "Seite nicht gefunden (404)" },
   experiment_view: { en: "Experiment seen", de: "Experiment gesehen" }
 };
@@ -49,7 +53,8 @@ const BROWSER_LABELS = {
   edge: { en: "Edge", de: "Edge" },
   samsung: { en: "Samsung Internet", de: "Samsung Internet" },
   opera: { en: "Opera", de: "Opera" },
-  other: { en: "Other", de: "Sonstige" }
+  other: { en: "Other", de: "Sonstige" },
+  app: { en: "App", de: "App" }
 };
 const OS_LABELS = {
   windows: { en: "Windows", de: "Windows" },
