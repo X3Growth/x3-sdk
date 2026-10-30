@@ -2552,10 +2552,10 @@ declare const TrackingConfigSchema: ZodObject<{
         }, $strict>]>;
         match: ZodArray<ZodObject<{
             kind: ZodEnum<{
-                exact: "exact";
                 prefix: "prefix";
-                glob: "glob";
                 regex: "regex";
+                exact: "exact";
+                glob: "glob";
             }>;
             value: ZodString;
         }, $strict>>;
@@ -2569,20 +2569,20 @@ declare const TrackingConfigSchema: ZodObject<{
     }, $strict>;
     excludePaths: ZodArray<ZodObject<{
         kind: ZodEnum<{
-            exact: "exact";
             prefix: "prefix";
-            glob: "glob";
             regex: "regex";
+            exact: "exact";
+            glob: "glob";
         }>;
         value: ZodString;
     }, $strict>>;
     personalPaths: ZodArray<ZodObject<{
         match: ZodObject<{
             kind: ZodEnum<{
-                exact: "exact";
                 prefix: "prefix";
-                glob: "glob";
                 regex: "regex";
+                exact: "exact";
+                glob: "glob";
             }>;
             value: ZodString;
         }, $strict>;
