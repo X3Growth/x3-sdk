@@ -14,6 +14,10 @@ function defaultOrigins(domains) {
   const origins = (exact.length > 0 ? exact : domains.slice(0, 1).map((domain) => domain.slice(2))).map((domain) => `https://${domain}`);
   return [...new Set(origins)];
 }
+function originsWithDomains(existing, domains) {
+  const added = domains.map((domain) => domain.trim().toLowerCase()).filter((domain) => /^(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain)).map((domain) => `https://${domain}`);
+  return [.../* @__PURE__ */ new Set([...existing, ...added])].slice(0, 50);
+}
 function defaultTrackingConfig(domains = ["example.com"]) {
   return {
     domains: [...new Set(domains)],
@@ -138,6 +142,7 @@ export {
   defaultOrigins,
   defaultTrackingConfig,
   effectiveTestParams,
+  originsWithDomains,
   storageKeys,
   toClientConfig
 };
