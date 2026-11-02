@@ -65,6 +65,21 @@ const OS_LABELS = {
   chromeos: { en: "ChromeOS", de: "ChromeOS" },
   other: { en: "Other", de: "Sonstige" }
 };
+function familyKey(labels, raw) {
+  const wanted = raw.trim().toLowerCase();
+  for (const [key, label2] of Object.entries(labels)) if (key === wanted || label2.en.toLowerCase() === wanted) return key;
+  return null;
+}
+function deviceLabel(label2, locale) {
+  if (!label2) return label2;
+  const at = label2.toLowerCase().lastIndexOf(" on ");
+  if (at <= 0) return label2;
+  const browser = familyKey(BROWSER_LABELS, label2.slice(0, at));
+  const os = familyKey(OS_LABELS, label2.slice(at + 4));
+  if (!browser || !os) return label2;
+  const name = browser === "other" ? "Browser" : BROWSER_LABELS[browser][locale];
+  return os === "other" ? name : `${name} ${locale === "de" ? "auf" : "on"} ${OS_LABELS[os][locale]}`;
+}
 const SCREEN_LABELS = {
   xs: { en: "< 576 px", de: "< 576 px" },
   sm: { en: "576\u2013767 px", de: "576\u2013767 px" },
@@ -247,6 +262,7 @@ export {
   SESSION_FLAG_LABELS,
   STITCH_LABELS,
   VIDEO_FORMAT_LABELS,
+  deviceLabel,
   formatBucket,
   formatBytes,
   formatChange,
