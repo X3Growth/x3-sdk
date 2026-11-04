@@ -2589,8 +2589,8 @@ declare const TrackingConfigSchema: ZodObject<{
         replacement: ZodString;
     }, $strict>>;
     personalMode: ZodEnum<{
-        isolate: "isolate";
         exclude: "exclude";
+        isolate: "isolate";
     }>;
     valueRedactions: ZodArray<ZodObject<{
         pattern: ZodString;
@@ -2638,8 +2638,8 @@ declare const TrackingConfigSchema: ZodObject<{
     messaging: ZodObject<{
         whatsapp: ZodBoolean;
         apps: ZodArray<ZodEnum<{
-            telegram: "telegram";
             signal: "signal";
+            telegram: "telegram";
             messenger: "messenger";
             viber: "viber";
             line: "line";
