@@ -1,6 +1,8 @@
 import { record } from "@rrweb/record";
 import { buildAnchor, elementText, inFixed, INTERACTIVE_SELECTOR, structureHash } from "../_core/index.js";
 import type { X3Plugin, X3PluginHost } from "../types";
+import tx from "../locales/sdk-capture";
+import { say, type SdkMessage, type SdkValues } from "../locales/say";
 
 /**
  * Owner capture (RECORDINGS-HEATMAPS §5.8): the one-time token of the capture link is exchanged
@@ -9,8 +11,7 @@ import type { X3Plugin, X3PluginHost } from "../types";
  * removed, and nothing is uploaded before the owner confirms the summary.
  */
 
-const de = () => (document.documentElement.lang || "de").toLowerCase().startsWith("de");
-const t = (german: string, english: string) => (de() ? german : english);
+const t = (message: SdkMessage, values?: SdkValues) => say(message, values);
 
 function bar(): { root: HTMLElement; message: HTMLElement; primary: HTMLButtonElement; secondary: HTMLButtonElement } {
   const root = document.createElement("div");
@@ -48,15 +49,15 @@ async function ownerCapture(host: X3PluginHost): Promise<void> {
     if (!response.ok) throw new Error(String(response.status));
     handle = ((await response.json()) as { handle: string }).handle;
   } catch {
-    ui.message.textContent = t("Dieser Aufnahme-Link ist abgelaufen oder wurde schon benutzt. Erzeuge im Dashboard einen neuen.", "This capture link has expired or was already used. Create a new one in the dashboard.");
+    ui.message.textContent = t(tx.captureLinkExpired);
     ui.primary.remove();
-    ui.secondary.textContent = t("Schließen", "Close");
+    ui.secondary.textContent = t(tx.close);
     ui.secondary.onclick = () => ui.root.remove();
     return;
   }
-  ui.message.textContent = t("Du nimmst als Inhaber auf. Zustand herstellen, dann ‚Aufnehmen‘ klicken.", "You are capturing as the owner. Set up the state, then click “Capture”.");
-  ui.primary.textContent = t("Aufnehmen", "Capture");
-  ui.secondary.textContent = t("Abbrechen", "Cancel");
+  ui.message.textContent = t(tx.captureAsOwner);
+  ui.primary.textContent = t(tx.capture);
+  ui.secondary.textContent = t(tx.cancel);
   ui.secondary.onclick = () => ui.root.remove();
   ui.primary.onclick = () => {
     ui.root.remove();
@@ -73,19 +74,16 @@ async function ownerCapture(host: X3PluginHost): Promise<void> {
     }
     const body = JSON.stringify({ k: bridge.key(), handle, snapshot: serialized, width: innerWidth, height: document.documentElement.scrollHeight, sh: structureHash(document.body), anchors });
     const confirm = bar();
-    confirm.message.textContent = t(
-      `Vorschau: „${document.title.slice(0, 60)}“, ${Object.keys(anchors).length} Elemente, ${innerWidth} px breit, ${(body.length / 1024).toFixed(0)} KB. Eingaben sind maskiert. Hochladen?`,
-      `Preview: “${document.title.slice(0, 60)}”, ${Object.keys(anchors).length} elements, ${innerWidth} px wide, ${(body.length / 1024).toFixed(0)} KB. Inputs are masked. Upload?`,
-    );
-    confirm.primary.textContent = t("Hochladen", "Upload");
-    confirm.secondary.textContent = t("Verwerfen", "Discard");
+    confirm.message.textContent = t(tx.capturePreview, { title: document.title.slice(0, 60), elements: Object.keys(anchors).length, width: innerWidth, kb: (body.length / 1024).toFixed(0) });
+    confirm.primary.textContent = t(tx.upload);
+    confirm.secondary.textContent = t(tx.discard);
     confirm.secondary.onclick = () => confirm.root.remove();
     confirm.primary.onclick = async () => {
       confirm.primary.disabled = true;
       const response = await fetch(`${base}/v1/snap`, { method: "POST", body, credentials: "omit", headers: { "content-type": "text/plain" } }).catch(() => null);
-      confirm.message.textContent = response?.status === 201 ? t("Gespeichert. Du kannst dieses Fenster schließen.", "Saved. You can close this window.") : t("Hochladen fehlgeschlagen. Bitte erneut versuchen.", "Upload failed. Please try again.");
+      confirm.message.textContent = response?.status === 201 ? t(tx.captureSaved) : t(tx.uploadFailed);
       confirm.primary.remove();
-      confirm.secondary.textContent = t("Schließen", "Close");
+      confirm.secondary.textContent = t(tx.close);
     };
   };
 }

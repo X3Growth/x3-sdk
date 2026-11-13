@@ -5,6 +5,18 @@ and the package uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- Internal devices (audit FE-03): only the dashboard's signed link (`?x3_internal=xi1.…`, valid 24 hours, checked by the
+  API with `GET /v1/c/{pk}?xi=…`) marks a device for good, and the marker is read and written only with consent
+  (`v2:<until>`, one year). A bare `?x3_internal=1` counts only that page load as test traffic and stores nothing; an
+  old marker `1` is removed. The relaxed recording masking (policy `t`) applies only to `test: true` and devices of the
+  signed link, never to a test parameter anyone can put on a link.
+- Visitor IP of `createX3ProxyHandler`, `getAssignments` and `clientIpFrom`/`requestContext` (audit FE-04): the hosting
+  platform's own header (Vercel `x-real-ip`, Netlify `x-nf-client-connection-ip`, Cloudflare Workers
+  `cf-connecting-ip`), else `x-forwarded-for` read from the right (internal proxies skipped, `trustedProxies`), else
+  `x-real-ip` – never the first `x-forwarded-for` entry, which a client can write. New options `clientIp(headers)` and
+  `trustedProxies`.
+
 ## [1.3.0] – 2026-10-27
 
 ### Added

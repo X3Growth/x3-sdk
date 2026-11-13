@@ -73,6 +73,44 @@ declare const TAG_PATTERN: RegExp;
 /** Same, as a prefix (stable-id detection on the client) */
 declare const REACT_GENERATED_ID_PREFIX_PATTERN: RegExp;
 
+/**
+ * A compiled linear-time pattern. Works with `String.prototype.replace` (Symbol.replace) like a RegExp,
+ * so it can stand in for one where only test/replace are used.
+ */
+declare class LinearRegex {
+    readonly source: string;
+    readonly flags: string;
+    private readonly prog;
+    private readonly groupNames;
+    readonly global: boolean;
+    readonly ignoreCase: boolean;
+    readonly unicode: boolean;
+    private readonly slots;
+    private constructor();
+    /** null when the pattern is invalid, uses an unsupported construct or exceeds the limits */
+    static compile(source: string, flags?: string): LinearRegex | null;
+    test(input: string): boolean;
+    /** Pike VM without captures (no allocation per thread): whether the pattern matches anywhere */
+    private matches;
+    /** First match at or after `from` (index, matched text, groups; undefined for groups that did not take part) */
+    exec(input: string, from?: number, budget?: {
+        steps: number;
+    }): {
+        index: number;
+        end: number;
+        groups: Array<string | undefined>;
+        named: Record<string, string | undefined>;
+    } | null;
+    /** String.prototype.replace semantics for a string replacement ($$, $&, $`, $', $n, $nn, $<name>) */
+    replace(input: string, replacement: string): string;
+    [Symbol.replace](input: string, replacement: string): string;
+    private expand;
+    private read;
+    private assert;
+    /** Pike VM with captures: threads in priority order, one visit per instruction and position */
+    private run;
+}
+
 /** Campaign parameters stored per session (parity: 13 keys in a fixed order) */
 declare const ATTRIBUTION_KEYS: readonly ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "utm_id", "gclid", "gbraid", "wbraid", "fbclid", "li_fat_id", "ttclid", "msclkid"];
 type AttributionKey = (typeof ATTRIBUTION_KEYS)[number];
@@ -82,7 +120,7 @@ declare const CLICK_ID_KEYS: readonly ["gclid", "gbraid", "wbraid", "fbclid", "l
 declare const ATTRIBUTION_ORIGINS: readonly ["url", "stored", "none"];
 type AttributionOrigin = (typeof ATTRIBUTION_ORIGINS)[number];
 type ValueRedaction = {
-    pattern: RegExp;
+    pattern: RegExp | LinearRegex;
     replacement: string;
 };
 /** Cleans a whole attribution object; unknown keys are dropped */
@@ -103,12 +141,6 @@ declare function attributionFromParams(params: {
 declare const CHANNEL_RULE_VERSIONS: readonly [1, 2];
 type ChannelRulesVersion = (typeof CHANNEL_RULE_VERSIONS)[number];
 
-/**
- * Path/value matchers configured per project (page groups, exclusions,
- * personal pages, goals). User-supplied regexes run in the browser and on the
- * server, so they are restricted: ≤ 200 chars, no backreferences, no nested
- * unbounded quantifiers (catastrophic backtracking).
- */
 declare const PATH_RULE_KINDS: readonly ["exact", "prefix", "glob", "regex"];
 type PathRuleKind = (typeof PATH_RULE_KINDS)[number];
 type PathRule = {
@@ -116,12 +148,6 @@ type PathRule = {
     value: string;
 };
 type Matcher = (value: string) => boolean;
-/**
- * Conservative static check. Rejects backreferences, and groups that carry an
- * unbounded (or > 10) outer quantifier while containing a quantifier inside –
- * the shapes behind exponential backtracking, e.g. (a+)+, (a|aa)*, (x.*){1,50}.
- */
-declare function isSafeRegex(source: string): boolean;
 /** Compiles one rule. Invalid or unsafe rules never match (configs are validated on write as well). */
 declare function compileMatcher(rule: PathRule): Matcher;
 declare function compileMatchers(rules: readonly PathRule[]): Matcher;
@@ -2860,6 +2886,8 @@ type CompiledTrackingConfig = {
     personalMode: "isolate" | "exclude";
     allowLocalhost: boolean;
 };
+/** Value redactions on the linear-time engine (never V8's backtracking RegExp, audit INJ-01); unsafe ones are skipped */
+declare function compileValueRedactions(redactions: TrackingConfig["valueRedactions"]): ValueRedaction[];
 /**
  * What GET /v1/c/{pk} returns and what `?k=` inlines into x3.js. No
  * allowed origins, no page groups (server-only), no secrets.
@@ -2867,6 +2895,11 @@ type CompiledTrackingConfig = {
 type ClientConfig = {
     /** projects.config_rev – echoed in batches as `cv` */
     rev: number;
+    /**
+     * only in the answer to GET /v1/c/{pk}?xi=<token> (audit FE-03): whether the dashboard's signed link „Gerät als intern
+     * markieren“ is valid for this project; the SDK remembers the device only then (and only with consent)
+     */
+    internal?: boolean;
     domains: string[];
     hostPrefixes: Record<string, string>;
     excludePaths: TrackingConfig["excludePaths"];
@@ -3445,5 +3478,5 @@ declare function parseForceParam(value: string | null | undefined): Record<strin
 declare const FORCE_PARAM = "x3_force";
 declare const FORCE_TOKEN_PARAM = "x3_force_t";
 
-export { CHOICE_CONTAINER_SELECTOR, CHOICE_INPUT_TYPES, CLICK_ID_KEYS, CLIENT_GEO_HEADER, CONTENTEDITABLE_SELECTOR, EVENT_NAME_PATTERN, EXPERIMENTS_STALE_AFTER_S, FORCE_PARAM, FORCE_TOKEN_PARAM, ID_PATTERN, IMMEDIATE_CLICK_KINDS, INTERACTIVE_SELECTOR, KEY_PATTERN, LANG_PATTERN, MASKED_VALUE, MASK_ALWAYS_SELECTOR, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, X3R_FLAGS, assignExperiment, attributeRule, attributionFromParams, buildAnchor, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, clickTarget, clientSamples, clientTargetingMatches, compileHostMatcher, compileMatcher, compileMatchers, elementText, encodeAttention, encodeScrollTimeline, encodeX3r, formatClientGeoHeader, hashIdentifiers, inFixed, isSafeRegex, isScriptUrl, maskLink, maskShape, normalizeExternalId, normalizeHost, normalizeVideoId, notFoundPage, parseForceParam, pathExcluded, readGeo, scrubPii, sessionFraction, sha256Hex, slugify, storageKeys, structureHash, trimProps, validFbCookie, valueRecordable };
+export { CHOICE_CONTAINER_SELECTOR, CHOICE_INPUT_TYPES, CLICK_ID_KEYS, CLIENT_GEO_HEADER, CONTENTEDITABLE_SELECTOR, EVENT_NAME_PATTERN, EXPERIMENTS_STALE_AFTER_S, FORCE_PARAM, FORCE_TOKEN_PARAM, ID_PATTERN, IMMEDIATE_CLICK_KINDS, INTERACTIVE_SELECTOR, KEY_PATTERN, LANG_PATTERN, MASKED_VALUE, MASK_ALWAYS_SELECTOR, MESSAGING_APPS, NOT_FOUND_META_NAME, PROP_KEY_PATTERN, REACT_GENERATED_ID_PREFIX_PATTERN, SCROLL_MILESTONES, TAG_PATTERN, UUID_PATTERN, VARIANT_PATTERN, WIRE_VERSION, X3R_FLAGS, assignExperiment, attributeRule, attributionFromParams, buildAnchor, builtInEvent, canonicalPage, cleanAttribution, cleanIdentifier, cleanLabel, cleanRefHost, cleanText, clickTarget, clientSamples, clientTargetingMatches, compileHostMatcher, compileMatcher, compileMatchers, compileValueRedactions, elementText, encodeAttention, encodeScrollTimeline, encodeX3r, formatClientGeoHeader, hashIdentifiers, inFixed, isScriptUrl, maskLink, maskShape, normalizeExternalId, normalizeHost, normalizeVideoId, notFoundPage, parseForceParam, pathExcluded, readGeo, scrubPii, sessionFraction, sha256Hex, slugify, storageKeys, structureHash, trimProps, validFbCookie, valueRecordable };
 export type { AssignReason, Attribution, AttributionOrigin, BehaviorClientConfig, BookingAdapter, CaptureSignal, ClickKind, ClientConfig, ClientExperiment, ClientExperiments, ClientJourneys, CompiledTrackingConfig, ConversionSource, HeartbeatResponse, JsonValue, MaskPolicy, NavType, NotFoundVia, PropValue, Props, ScrollMarks, ScrollSample, TrackingConfig, VideoFormat, WireAdCookies, WireClickHeat, WireClickIds, WireEvent, WireIdentify, WirePageview, WirePageviewHeat, WireSection, WireVideo, X3rHeader };

@@ -43,12 +43,20 @@
  */
 
 import { CLIENT_GEO_HEADER, formatClientGeoHeader, readGeo } from "../_core/index.js";
+import { clientIpOf, hostingPlatform, type ClientIpOptions, type HostingPlatform } from "../server/client-ip";
 
 export type X3ProxyOptions = {
   /** 3x API origin, e.g. https://api.3x.example */
   apiOrigin: string;
   /** secret key with scope ingest:proxy (X3_PROXY_KEY); without it the API sees the proxy's IP */
   proxyKey?: string | null;
+  /**
+   * The visitor's address when the default rule does not fit your hosting (e.g. the socket address of a Node server):
+   * the API trusts what the proxy sends with the proxy key, so it must never be a value the client chose.
+   */
+  clientIp?: ClientIpOptions["clientIp"];
+  /** proxies in front of this server that append to x-forwarded-for (default 1); see visitorIp */
+  trustedProxies?: number;
   /** upstream timeout (default 10 s) */
   timeoutMs?: number;
   fetch?: typeof fetch;
@@ -87,15 +95,13 @@ export function proxiedPath(pathname: string, method: string): string | null {
   return null;
 }
 
-const IP = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:.]{2,45})$/i;
-
-/** Visitor IP from the hosting edge's headers (first x-forwarded-for entry, else x-real-ip) */
-export function visitorIp(headers: Headers): string | null {
-  for (const candidate of [(headers.get("x-forwarded-for") ?? "").split(",")[0], headers.get("x-real-ip"), headers.get("cf-connecting-ip")]) {
-    const value = candidate?.trim().replace(/^\[|\]$/g, "");
-    if (value && value.length <= 64 && IP.test(value)) return value;
-  }
-  return null;
+/**
+ * Visitor IP (audit FE-04): `clientIp` of the options, else the hosting platform's own header (Vercel x-real-ip, Netlify
+ * x-nf-client-connection-ip, Cloudflare Workers cf-connecting-ip), else x-forwarded-for counted from the right (the entry
+ * the nearest of `trustedProxies` proxies appended; never the first entry, which the client can write), else x-real-ip.
+ */
+export function visitorIp(headers: Headers, options: ClientIpOptions = {}, platform: HostingPlatform = hostingPlatform()): string | null {
+  return clientIpOf(headers, options, platform);
 }
 
 /** Visitor country (ISO 3166-1 alpha-2) from Vercel / Cloudflare headers */
@@ -193,7 +199,7 @@ export function createX3ProxyHandler(options: X3ProxyOptions): X3ProxyHandler {
       const value = request.headers.get(name);
       if (value) headers.set(name, value);
     }
-    const ip = visitorIp(request.headers);
+    const ip = visitorIp(request.headers, { clientIp: options.clientIp, trustedProxies: options.trustedProxies });
     if (ip) headers.set("x-3x-client-ip", ip);
     const country = visitorCountry(request.headers);
     if (country) headers.set("x-3x-client-country", country);

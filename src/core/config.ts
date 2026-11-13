@@ -1,4 +1,4 @@
-import { compileHostMatcher, compileMatcher, compileMatchers, isSafeRegex, type ClientConfig, type CompiledTrackingConfig, type TrackingConfig } from "../_core/index.js";
+import { compileHostMatcher, compileMatcher, compileMatchers, compileValueRedactions, type ClientConfig, type CompiledTrackingConfig, type TrackingConfig } from "../_core/index.js";
 
 /**
  * Browser side of the client config. `compileClient` builds exactly the parts
@@ -23,9 +23,7 @@ export function compileClient(config: ClientConfig): CompiledTrackingConfig {
     groups: [],
     defaultGroup: "main",
     groupKeys: ["main"],
-    valueRedactions: config.valueRedactions
-      .filter((redaction) => isSafeRegex(redaction.pattern))
-      .map((redaction) => ({ pattern: new RegExp(redaction.pattern, redaction.ignoreCase ? "gi" : "g"), replacement: redaction.replacement })),
+    valueRedactions: compileValueRedactions(config.valueRedactions),
     personalMode: config.personalMode,
     allowLocalhost: config.allowLocalhost,
   };

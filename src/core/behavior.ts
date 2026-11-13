@@ -33,6 +33,11 @@ export type BehaviorBridge = {
   stopped(): boolean;
   /** test/internal session (test parameter, `test: true`, device marked internal); recorded only when the project relaxes masking for tests (AC) */
   test?(): boolean;
+  /**
+   * a trusted internal visit (audit FE-03): the site's own `test: true` or a device the dashboard's signed link marked;
+   * only these get the relaxed masking `t`, never a test parameter anyone can put on a link
+   */
+  internal?(): boolean;
   /** listeners for state changes (consent, stop) */
   on: Array<() => void>;
   /** sha256 hex of the device secret (privacy center proof), set by the heat plugin */
@@ -49,7 +54,7 @@ export type BehaviorBridge = {
 /** x3.consent("granted" | "denied") or x3.consent({ analytics?, recordings? }) – the purposes are separate (§5.4 step 3) */
 export type ConsentInput = "granted" | "denied" | { analytics?: boolean; recordings?: boolean };
 
-export function createBehavior(deps: { config(): BehaviorClientConfig | null | undefined; consent(): boolean; denied(): boolean; hard(): boolean; test(): boolean; request(name: "heat" | "live" | "signals" | "replay" | "capture"): void; key(): string }) {
+export function createBehavior(deps: { config(): BehaviorClientConfig | null | undefined; consent(): boolean; denied(): boolean; hard(): boolean; test(): boolean; trusted?(): boolean; request(name: "heat" | "live" | "signals" | "replay" | "capture"): void; key(): string }) {
   let recordings: Cs = "p";
   let armed: Omit<PendingClick, "e"> | null = null;
   const states: Record<string, WirePageviewHeat> = {};
@@ -85,6 +90,7 @@ export function createBehavior(deps: { config(): BehaviorClientConfig | null | u
     allowed,
     stopped,
     test: deps.test,
+    internal: deps.trusted,
     config: deps.config,
     setRecordings: (state) => {
       recordings = state;

@@ -16,7 +16,29 @@ function pathMatches(rule, path) {
     const prefix = rule.value.length > 1 ? rule.value.replace(/\/+$/, "") : rule.value;
     return prefix === "/" || path === prefix || path.startsWith(`${prefix}/`);
   }
-  return new RegExp(globSource(rule.value)).test(path);
+  return globMatches(rule.value, path);
+}
+function globMatches(glob, path) {
+  const n = path.length;
+  let reach = new Uint8Array(n + 1);
+  reach[0] = 1;
+  for (let j = 0; j < glob.length; j += 1) {
+    const next = new Uint8Array(n + 1);
+    if (glob[j] === "*") {
+      const any = glob[j + 1] === "*";
+      if (any) while (glob[j + 1] === "*") j += 1;
+      let open = false;
+      for (let i = 0; i <= n; i += 1) {
+        if (!any && i > 0 && path[i - 1] === "/") open = false;
+        if (reach[i]) open = true;
+        if (open) next[i] = 1;
+      }
+    } else {
+      for (let i = 0; i < n; i += 1) if (reach[i] && path[i] === glob[j]) next[i + 1] = 1;
+    }
+    reach = next;
+  }
+  return reach[n] === 1;
 }
 function globSource(glob) {
   return `^${glob.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\0").replace(/\*/g, "[^/]*").replace(/\u0000/g, ".*")}$`;
@@ -85,6 +107,7 @@ export {
   FORCE_TOKEN_PARAM,
   assignExperiment,
   clientTargetingMatches,
+  globMatches,
   globSource,
   hostMatches,
   needsServerTargeting,

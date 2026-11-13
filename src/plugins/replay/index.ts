@@ -53,8 +53,9 @@ export function replay(): X3Plugin {
       let slow = false;
 
       const config = () => bridge.config();
-      // test/internal sessions get the relaxed policy `t` when the project relaxes for tests only (AC); old cores have no test()
-      const relaxed = () => !!(bridge.test?.() && config()?.replay.mask.t);
+      // trusted internal visits get the relaxed policy `t` when the project relaxes for tests only (AC); a test parameter
+      // anyone can hang on a link never relaxes the masking (audit FE-03); old cores have no internal(): never relaxed
+      const relaxed = () => !!(bridge.internal?.() && config()?.replay.mask.t);
       const mask = (): MaskOptions => {
         const m = config()?.replay.mask;
         const p = (relaxed() ? m?.t : m?.p) ?? undefined;

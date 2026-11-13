@@ -1,3 +1,4 @@
+import { clientIpOf, type ClientIpOptions } from "../server/client-ip";
 import { fetchAssignments, type X3Assignments } from "../server/experiments";
 
 /**
@@ -24,19 +25,18 @@ export type GetAssignmentsInput = {
   keys?: string[];
   timeoutMs?: number;
   fetch?: typeof fetch;
+  /** the visitor's address when the default rule does not fit your hosting (see createX3ProxyHandler) */
+  clientIp?: ClientIpOptions["clientIp"];
+  /** proxies in front of this server that append to x-forwarded-for (default 1) */
+  trustedProxies?: number;
 };
 
 const TTL_MS = 60_000;
 const MAX_ENTRIES = 5_000;
 const cache = new Map<string, { at: number; value: X3Assignments }>();
-const IP = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:.]{2,45})$/i;
-
-function ipOf(headers: HeaderLike): string | null {
-  for (const candidate of [(headers.get("x-forwarded-for") ?? "").split(",")[0], headers.get("x-real-ip"), headers.get("cf-connecting-ip")]) {
-    const value = candidate?.trim();
-    if (value && IP.test(value)) return value;
-  }
-  return null;
+/** The visitor's address by the proxy's rule (audit FE-04: never the client-written first x-forwarded-for entry) */
+function ipOf(headers: HeaderLike, options: ClientIpOptions): string | null {
+  return clientIpOf(headers, options);
 }
 
 function vidOf(headers: HeaderLike): string | undefined {
@@ -45,7 +45,7 @@ function vidOf(headers: HeaderLike): string | undefined {
 }
 
 export async function getAssignments(input: GetAssignmentsInput): Promise<X3Assignments> {
-  const ip = ipOf(input.headers);
+  const ip = ipOf(input.headers, { clientIp: input.clientIp, trustedProxies: input.trustedProxies });
   const ua = (input.headers.get("user-agent") ?? "").slice(0, 500);
   if (!ip) return {};
   const host = (input.headers.get("x-forwarded-host") ?? input.headers.get("host") ?? "").split(",")[0]!.trim().toLowerCase().replace(/:\d+$/, "");

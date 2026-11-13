@@ -1,0 +1,12 @@
+{
+  "captureLinkExpired": "This capture link has expired or was already used. Create a new one in the dashboard.",
+  "close": "Close",
+  "captureAsOwner": "You are capturing as the owner. Set up the state, then click “Capture”.",
+  "capture": "Capture",
+  "cancel": "Cancel",
+  "capturePreview": "Preview: “{title}”, {elements} elements, {width} px wide, {kb} KB. Inputs are masked. Upload?",
+  "upload": "Upload",
+  "discard": "Discard",
+  "captureSaved": "Saved. You can close this window.",
+  "uploadFailed": "Upload failed. Please try again."
+}

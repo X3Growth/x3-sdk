@@ -70,9 +70,9 @@ function effectiveSignals(scope, context) {
 }
 function decodeConsentStates(value) {
   if (typeof value !== "string" || value.length !== 2) return null;
-  const [a, r2] = [value[0], value[1]];
-  if (!CONSENT_STATES.includes(a) || !CONSENT_STATES.includes(r2)) return null;
-  return { analytics: a, recordings: r2 };
+  const [a, r] = [value[0], value[1]];
+  if (!CONSENT_STATES.includes(a) || !CONSENT_STATES.includes(r)) return null;
+  return { analytics: a, recordings: r };
 }
 function encodeConsentStates(cs) {
   return `${cs.analytics}${cs.recordings}`;
@@ -83,105 +83,7 @@ function legacyConsentStates(consent) {
 function isRejection(prev, next) {
   return next === "d" && prev !== "d";
 }
-const T25 = "\xA7 25 TDDDG \xB7 EDPB-Leitlinien 2/2023";
-const DSK = "DSK, OH Telemedien 2024";
-const CNIL = "CNIL-Entwurf 2026";
-const ART6A = "Art. 6 Abs. 1 lit. a DSGVO";
-const r = (tone, de, en, source) => ({ tone, text: { de, en }, source });
-const consentOk = r("green", "Mit Einwilligung zul\xE4ssig.", "Allowed with consent.", ART6A);
-const RISK = {
-  clicks: {
-    consent: r("green", "Mit Einwilligung zul\xE4ssig, wenn der Banner den Zweck nennt.", "Allowed with consent when the banner names the purpose.", ART6A),
-    until_rejected: r("yellow", "Liest Klickziel und Position im Browser aus; \xA7 25 gilt auch ohne Cookies. Grauzone wie Dein bisheriger Tracker.", "Reads click target and position in the browser; \xA7 25 applies without cookies too. Grey zone like your existing tracker.", T25),
-    always: r("red", "L\xE4uft auch nach Ablehnung im Banner weiter; Aufsichtsbeh\xF6rden sehen das kritisch.", "Keeps running after a rejection in the banner; supervisory authorities view this critically.", DSK)
-  },
-  scroll: {
-    consent: consentOk,
-    until_rejected: r("yellow", "Scrollpfad und Verweildauer sind Lesezugriffe vor Einwilligung; bis zu einer Entscheidung der Aufsicht Grauzone.", "Scroll path and dwell time are reads before consent; a grey zone until supervisory authorities decide.", DSK),
-    always: r("red", "Ignoriert die Banner-Antwort; nur Widerspruch per Opt-out/GPC stoppt.", "Ignores the banner answer; only an objection via opt-out/GPC stops it.", DSK)
-  },
-  sections: {
-    consent: consentOk,
-    until_rejected: r("yellow", "Wie Scrollen zu bewerten: Messung im Browser vor Einwilligung.", "Assessed like scrolling: measured in the browser before consent.", T25),
-    always: r("red", "Ignoriert die Banner-Antwort.", "Ignores the banner answer.", DSK)
-  },
-  pointer: {
-    consent: consentOk,
-    until_rejected: r("red", "Bewegungsprofile sind ein intensiver Zugriff; ohne Einwilligung nach DSK-Auffassung unzul\xE4ssig.", "Movement profiles are an intensive access; according to the DSK not allowed without consent.", `${DSK} \xB7 ${CNIL}`),
-    always: r("red", "Bewegungsprofile trotz Ablehnung; hohes Bu\xDFgeldrisiko.", "Movement profiles despite a rejection; high fine risk.", DSK)
-  },
-  recording: {
-    consent: r("green", "Eigener Zweck \u201ESitzungsaufzeichnung\u201C im Banner n\xF6tig; Texte maskiert, Eingaben nie.", "Needs its own purpose \u201Csession recording\u201D in the banner; texts masked, inputs never.", ART6A),
-    until_rejected: r("red", "Aufzeichnung ohne Einwilligung halten DSK und CNIL f\xFCr unzul\xE4ssig; h\xF6chstes Bu\xDFgeldrisiko in dieser Liste.", "DSK and CNIL consider recording without consent unlawful; the highest fine risk in this list.", `${DSK} \xB7 ${CNIL}`),
-    always: r("red", "Aufzeichnung trotz Ablehnung im Banner.", "Recording despite a rejection in the banner.", `${DSK} \xB7 ${CNIL}`)
-  },
-  forms: {
-    consent: consentOk,
-    until_rejected: r("yellow", "Keine Werte, aber Lesezugriff vor Einwilligung.", "No values, but a read before consent.", T25),
-    always: r("red", "Ignoriert die Banner-Antwort.", "Ignores the banner answer.", DSK)
-  },
-  liveIndividual: {
-    consent: consentOk,
-    until_rejected: r("red", "Beobachtung einer Person in Echtzeit ohne Einwilligung; deutlich intensiver als ein Aggregat.", "Watching one person in real time without consent; far more intensive than an aggregate.", DSK),
-    always: r("red", "Echtzeit-Beobachtung trotz Ablehnung.", "Real-time observation despite a rejection.", DSK)
-  },
-  geo: {
-    consent: consentOk,
-    until_rejected: r("yellow", "Grober Ort, keine IP gespeichert; Stadt erst ab der Mindestmenge sichtbar.", "Coarse location, no IP stored; city only visible from the minimum count.", "Art. 6 Abs. 1 lit. f DSGVO"),
-    always: r("yellow", "Grober Ort auch nach Ablehnung; ohne IP vertretbar, aber Widerspruch muss wirken.", "Coarse location even after a rejection; defensible without IP, but an objection must take effect.", "Art. 21 DSGVO")
-  }
-};
-const OFF_RISK = r("green", "Wird nicht erfasst.", "Not captured.", "");
-function riskOf(signal, level) {
-  return level === "off" ? OFF_RISK : RISK[signal][level];
-}
-const MODE_RISK = {
-  consent_only: r("green", "Rechtlich die sichere Wahl.", "Legally the safe choice.", ART6A),
-  until_rejected: r("yellow", "Grauzone: \xA7 25 TDDDG gilt auch ohne Cookies (DSK, EDPB 2/2023).", "Grey zone: \xA7 25 TDDDG applies without cookies too (DSK, EDPB 2/2023).", T25),
-  always_cookieless: r("red", "Ablehnung im Banner stoppt die Basis nicht.", "A rejection in the banner does not stop the base signals.", DSK)
-};
-function needsAck(key, value) {
-  if (key === "mode") return MODE_RISK[value]?.tone === "red";
-  return riskOf(key, value).tone === "red";
-}
-const SIGNAL_LABELS = {
-  clicks: { name: { de: "Klicks", en: "Clicks" }, what: { de: "Ziel und Position \xB7 Klick-Heatmap, Money Map, Live-Klicks", en: "Target and position \xB7 click heatmap, money map, live clicks" } },
-  scroll: { name: { de: "Scrollen & sichtbarer Bereich", en: "Scrolling & visible area" }, what: { de: "Scrolltiefe, Mass-Replay, Viewport-Band im Live-Board", en: "Scroll depth, mass replay, viewport band on the live board" } },
-  sections: { name: { de: "Abschnitts-Sichtbarkeit", en: "Section visibility" }, what: { de: "Welche Abschnitte gesehen werden, Aufmerksamkeit", en: "Which sections are seen, attention" } },
-  pointer: { name: { de: "Mausbewegung & Hover", en: "Mouse movement & hover" }, what: { de: "Bewegungs-Heatmap, Mauszeiger im Live-Board", en: "Movement heatmap, mouse pointer on the live board" } },
-  recording: { name: { de: "Sitzungsaufzeichnung", en: "Session recording" }, what: { de: "Einzelne Besuche als Aufnahme (Seitenaufbau, maskiert)", en: "Single visits as a recording (page structure, masked)" } },
-  forms: { name: { de: "Formular-Interaktionen", en: "Form interactions" }, what: { de: "Nur Fokus und Abbruch je Feld, nie Werte", en: "Only focus and abandonment per field, never values" } },
-  liveIndividual: { name: { de: "Live-Ansicht einzelner Besucher", en: "Live view of single visitors" }, what: { de: "Band, Klicks und Herkunft je Besucher in Echtzeit", en: "Band, clicks and origin per visitor in real time" } },
-  geo: { name: { de: "Ort (Land, Region, Stadt)", en: "Location (country, region, city)" }, what: { de: "Live-Karte, Herkunft nach Region \xB7 aus dem Netz-Knoten, keine IP", en: "Live map, origin by region \xB7 from the network edge, no IP" } }
-};
-const LEVEL_LABELS = {
-  off: { de: "Aus", en: "Off" },
-  consent: { de: "Nur mit Zustimmung", en: "Only with consent" },
-  until_rejected: { de: "Solange nicht abgelehnt", en: "Until rejected" },
-  always: { de: "Immer", en: "Always" }
-};
-const MODE_LABELS = {
-  consent_only: {
-    name: { de: "Nur nach Zustimmung", en: "Only after consent" },
-    body: { de: "Erfasst erst, wenn jemand im Banner zustimmt. Typisch 40\u201360 % weniger Daten.", en: "Captures only once someone agrees in the banner. Typically 40\u201360 % less data." }
-  },
-  until_rejected: {
-    name: { de: "Solange nicht abgelehnt", en: "Until rejected" },
-    body: { de: "Erfasst ab dem ersten Aufruf ohne Cookies. Ablehnung, GPC oder Opt-out stoppen sofort.", en: "Captures from the first visit without cookies. A rejection, GPC or opt-out stops it at once." }
-  },
-  always_cookieless: {
-    name: { de: "Immer cookielos", en: "Always cookieless" },
-    body: { de: "Basis-Signale laufen unabh\xE4ngig vom Banner, auch auf Seiten ohne Banner. Opt-out und GPC wirken weiter.", en: "Base signals run regardless of the banner, also on pages without one. Opt-out and GPC still apply." }
-  }
-};
-function basisModeLabel(mode, locale) {
-  const labels = {
-    consent_only: { de: "nur mit Zustimmung", en: "consent only" },
-    until_rejected: { de: "solange nicht abgelehnt", en: "until rejected" },
-    always_cookieless: { de: "immer cookielos", en: "always cookieless" }
-  };
-  return labels[mode][locale];
-}
+import { basisModeLabel, LEVEL_LABELS, MODE_LABELS, MODE_RISK, needsAck, RISK, riskOf, SIGNAL_LABELS } from "./capture-texts.js";
 export {
   BASE_SIGNALS,
   BEHAVIOR_PRESETS,

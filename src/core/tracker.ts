@@ -137,6 +137,8 @@ type Pageview = TrackedPageview & {
 type Session = { sid: string; fresh: boolean; last: number };
 
 const KEY_FORMAT = /^pk_3x_[0-9A-Za-z]{30}$/;
+/** the dashboard's signed link „Gerät als intern markieren“ (?x3_internal=xi1.<expiry>.<hmac>, audit FE-03) */
+const INTERNAL_TOKEN = /^xi1\.\w{6,8}\.\w{32}$/;
 /** Global Privacy Control: always a stop for behavior signals (B3), a denial for core tracking when the project honours it */
 const gpcOn = () => (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
 const TEXT_LABEL_SELECTOR = "a,button,summary,[role=button],[role=link]";
@@ -193,6 +195,14 @@ export function createTracker(env: TrackerEnv): Tracker {
   /** GPC (or an explicit denial before consent mode "require") forces denial */
   let consentLocked = false;
   let testTraffic = false;
+  /**
+   * a trusted internal visit (audit FE-03): the site's own code marked it (init `test: true`) or the dashboard's signed
+   * link „Gerät als intern markieren“ was checked by the API. Only such visits get the relaxed recording masking; a test
+   * parameter anyone can hang on a link (?x3_test=1, a bare ?x3_internal=1) only counts the page load as test traffic.
+   */
+  let trustedInternal = false;
+  /** the signed link was checked on this page load before consent: remembered once consent comes */
+  let internalPending = false;
   let popstateAt = 0;
   let session: Session | null = null;
   let current: Pageview | null = null;
@@ -229,7 +239,7 @@ export function createTracker(env: TrackerEnv): Tracker {
   /** explicit denial seen (consent journeys plugin deletes its cookies) */
   let denied = false;
   // recordings/heatmaps/live gate + anchor capture (RECORDINGS-HEATMAPS §20.B/C)
-  const behavior = createBehavior({ config: () => cfg?.behavior, consent: () => consent, denied: () => denied || consentLocked, hard: () => !running || gpcOn(), test: () => testTraffic, request: (name) => requestPlugin(name), key: () => key });
+  const behavior = createBehavior({ config: () => cfg?.behavior, consent: () => consent, denied: () => denied || consentLocked, hard: () => !running || gpcOn(), test: () => testTraffic, trusted: () => trustedInternal, request: (name) => requestPlugin(name), key: () => key });
   hooks.push({ consent: () => behavior.changed() });
 
   const debug = (message: string) => {
@@ -689,6 +699,8 @@ export function createTracker(env: TrackerEnv): Tracker {
       consent = true;
       saveSession();
       denied = false;
+      // a device the signed link marked before consent is remembered now (audit FE-03)
+      if (!before && internalPending) internalOn(true);
       // consent-gated journey persistence (x3.journeys.js) is only downloaded on a consent decision
       if (cfg?.journeys) requestPlugin("journeys");
       if (!before) runHooks("consent", true, false);
@@ -1084,6 +1096,17 @@ export function createTracker(env: TrackerEnv): Tracker {
     begin(navTypeFromPerformance(prerendered), true);
   };
 
+  /**
+   * A device the dashboard's signed link marked (audit FE-03): internal from now on; `store` remembers it for a year,
+   * only with consent (without consent it is remembered once consent comes on this page). The marker is its expiry.
+   */
+  const internalOn = (store: boolean) => {
+    trustedInternal = testTraffic = true;
+    internalPending = store && !consent;
+    if (store && consent) storageSet("localStorage", keys.internal, String(Date.now() + 31_536e6));
+    behavior.changed();
+  };
+
   /** Opt-out, DNT and consent mode decide whether tracking runs; then the first pageview starts */
   const start = () => {
     if (!cfg || running || destroyed) return;
@@ -1091,11 +1114,31 @@ export function createTracker(env: TrackerEnv): Tracker {
     if (notrack === "1") storageSet("localStorage", keys.notrack, "1");
     if (notrack === "0") storageSet("localStorage", keys.notrack, null);
     if (storageGet("localStorage", keys.notrack) === "1") return block("opted out");
-    // device marked internal (?x3_internal=1, undo with =0): its visits count as test traffic (AC: relaxed masking for internal sessions)
+    // internal devices (audit FE-03): only the dashboard's signed link marks a device for good, after the API checked it,
+    // and the marker is read and written only with consent; a bare ?x3_internal=1 counts this page load as test traffic
     const internal = new URLSearchParams(window.location.search).get("x3_internal");
-    if (internal === "1") storageSet("localStorage", keys.internal, "1");
     if (internal === "0") storageSet("localStorage", keys.internal, null);
-    if (storageGet("localStorage", keys.internal) === "1") testTraffic = true;
+    else if (internal === "1") testTraffic = true;
+    else if (internal && INTERNAL_TOKEN.test(internal)) {
+      // the link is the credential: out of the address bar before anything else reads it; the API checks it
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("x3_internal");
+        history.replaceState(history.state, "", url);
+      } catch {
+        // keep the address as it is
+      }
+      fetch(`${host}/v1/c/${key}?xi=${internal}`)
+        .then((response) => response.json() as Promise<{ internal?: unknown }>)
+        .then((answer) => answer.internal === true && internalOn(true))
+        .catch(() => undefined);
+    }
+    // a remembered device (with consent only); the marker of the old unsigned link (`1`) or an expired one goes
+    const stored = consent ? storageGet("localStorage", keys.internal) : null;
+    if (stored) {
+      if (Number(stored) > Date.now()) internalOn(false);
+      else storageSet("localStorage", keys.internal, null);
+    }
     if ((options?.respectDoNotTrack || cfg.consent.respectDoNotTrack) && navigator.doNotTrack === "1") return block("Do Not Track");
     if (cfg.consent.mode === "require" && !consent) return block("waiting for consent");
     const doc = document as Document & { prerendering?: boolean };
@@ -1282,7 +1325,11 @@ export function createTracker(env: TrackerEnv): Tracker {
     options = init;
     key = init.key;
     host = (init.host ?? env.defaultHost()).replace(/\/+$/, "");
-    if (init.test) testTraffic = true;
+    // the site's own code marks this visit (signed-in staff): test traffic with the relaxed masking (AC)
+    if (init.test) {
+      testTraffic = true;
+      trustedInternal = true;
+    }
     try {
       if (window.top !== window.self) return;
     } catch {

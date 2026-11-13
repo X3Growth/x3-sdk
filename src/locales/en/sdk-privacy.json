@@ -1,0 +1,15 @@
+{
+  "privacy": "Privacy",
+  "capturingActive": "Capturing on this device: active",
+  "capturingOff": "Capturing on this device: off",
+  "controller": "Controller: {controller}",
+  "didNotWork": "That did not work. Please try again later.",
+  "close": "Close",
+  "stopCapturing": "Stop capturing",
+  "stopped": "Done. Nothing is captured on this device any more.",
+  "deleteMyData": "Delete my data",
+  "deletedVisits": "Deleted: {n, plural, one {# visit} other {# visits}} of this device.",
+  "showMyData": "Show my data",
+  "exportFileName": "my-data.json",
+  "fileDownloaded": "The file was downloaded."
+}

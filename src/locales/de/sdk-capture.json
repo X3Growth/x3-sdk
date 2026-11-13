@@ -1,0 +1,12 @@
+{
+  "captureLinkExpired": "Dieser Aufnahme-Link ist abgelaufen oder wurde schon benutzt. Erzeuge im Dashboard einen neuen.",
+  "close": "Schließen",
+  "captureAsOwner": "Du nimmst als Inhaber auf. Zustand herstellen, dann ‚Aufnehmen‘ klicken.",
+  "capture": "Aufnehmen",
+  "cancel": "Abbrechen",
+  "capturePreview": "Vorschau: „{title}“, {elements} Elemente, {width} px breit, {kb} KB. Eingaben sind maskiert. Hochladen?",
+  "upload": "Hochladen",
+  "discard": "Verwerfen",
+  "captureSaved": "Gespeichert. Du kannst dieses Fenster schließen.",
+  "uploadFailed": "Hochladen fehlgeschlagen. Bitte erneut versuchen."
+}

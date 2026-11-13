@@ -1,0 +1,15 @@
+{
+  "privacy": "Datenschutz",
+  "capturingActive": "Erfassung auf diesem Gerät: aktiv",
+  "capturingOff": "Erfassung auf diesem Gerät: aus",
+  "controller": "Verantwortlich: {controller}",
+  "didNotWork": "Das hat nicht geklappt. Bitte später erneut versuchen.",
+  "close": "Schließen",
+  "stopCapturing": "Nicht mehr erfassen",
+  "stopped": "Erledigt. Auf diesem Gerät wird nichts mehr erfasst.",
+  "deleteMyData": "Meine Daten löschen",
+  "deletedVisits": "Gelöscht: {n, plural, one {# Besuch} other {# Besuche}} dieses Geräts.",
+  "showMyData": "Daten anzeigen",
+  "exportFileName": "meine-daten.json",
+  "fileDownloaded": "Die Datei wurde heruntergeladen."
+}

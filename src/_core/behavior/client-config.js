@@ -2,6 +2,7 @@
 // Only the part of the core the SDK uses; changes are made upstream and synced.
 import { CAPTURE_LEVELS, CAPTURE_SIGNALS, effectiveLevel, SIGNAL_PURPOSE } from "./capture.js";
 import { normalMaskPolicy, profileOfPolicy, samePolicy, testMaskPolicy } from "./mask-policy.js";
+import { wildcardMatches } from "../matchers.js";
 function toBehaviorClientConfig(settings, extras) {
   const { mode, signals } = settings.capture;
   const preset = extras.preset ?? settings.preset;
@@ -44,10 +45,7 @@ function maskClientConfig(settings, preset) {
 }
 function pathExcluded(path, globs) {
   const lower = path.toLowerCase();
-  return globs.some((glob) => {
-    const pattern = new RegExp(`^${glob.toLowerCase().replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
-    return pattern.test(lower);
-  });
+  return globs.some((glob) => wildcardMatches(glob.toLowerCase(), lower));
 }
 export {
   pathExcluded,

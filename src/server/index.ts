@@ -12,6 +12,7 @@
  * plaintext over TLS and hashed by the API on receipt (never stored in plaintext).
  * The bundle is self-contained (no zod, no @3x/client at runtime; pack:staged checks it).
  */
+import { clientIpOf, type ClientIpOptions } from "./client-ip";
 import { validFbCookie, type ConversionSource } from "../_core/index.js";
 import { fetchAssignments, withLeadRetry, type AssignRequest, type X3Assignments } from "./experiments";
 
@@ -354,16 +355,14 @@ function header(source: HeaderSource, name: string): string | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
 }
 
-const IP = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:.]{2,45})$/i;
-
-/** First valid address of x-forwarded-for, else x-real-ip / cf-connecting-ip (set by the hosting edge) */
-export function clientIpFrom(source: HeaderSource): string | undefined {
-  const candidates = [(header(source, "x-forwarded-for") ?? "").split(",")[0], header(source, "x-real-ip"), header(source, "cf-connecting-ip")];
-  for (const candidate of candidates) {
-    const value = candidate?.trim().replace(/^\[|\]$/g, "");
-    if (value && value.length <= 64 && IP.test(value)) return value;
-  }
-  return undefined;
+/**
+ * The visitor's address for server-side events (audit FE-04): `clientIp` of the options, else the hosting platform's
+ * own header (Vercel x-real-ip, Netlify x-nf-client-connection-ip, Cloudflare Workers cf-connecting-ip), else
+ * x-forwarded-for counted from the right (`trustedProxies`, default 1), else x-real-ip. Never the first
+ * x-forwarded-for entry: a client can write it, and most proxies append to it.
+ */
+export function clientIpFrom(source: HeaderSource, options: ClientIpOptions = {}): string | undefined {
+  return clientIpOf({ get: (name) => header(source, name) }, options) ?? undefined;
 }
 
 /** Cookie value by name from a Cookie header */
