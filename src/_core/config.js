@@ -14,8 +14,9 @@ const DEFAULT_EXCLUDE_PATHS = [
 ];
 function defaultOrigins(domains) {
   const exact = domains.filter((domain) => !domain.startsWith("*."));
-  const origins = (exact.length > 0 ? exact : domains.slice(0, 1).map((domain) => domain.slice(2))).map((domain) => `https://${domain}`);
-  return [...new Set(origins)];
+  const wildcards = domains.filter((domain) => domain.startsWith("*."));
+  const apex = exact.length > 0 ? exact : wildcards.slice(0, 1).map((domain) => domain.slice(2));
+  return [...new Set([...apex, ...wildcards].map((domain) => `https://${domain}`))];
 }
 function originsWithDomains(existing, domains) {
   const added = domains.map((domain) => domain.trim().toLowerCase()).filter((domain) => /^(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(domain)).map((domain) => `https://${domain}`);
