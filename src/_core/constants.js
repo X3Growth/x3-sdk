@@ -16,6 +16,12 @@ const ENDPOINTS = {
   mcp: "/mcp",
   cron: "/v1/cron"
 };
+const X3_MCP_GATEWAY_URL = "https://mcp.x3growth.io/mcp";
+const X3_PRODUCTION_API_ORIGIN = "https://api.x3growth.io";
+function customerMcpUrl(apiOrigin) {
+  const origin = apiOrigin.replace(/\/+$/, "");
+  return origin === X3_PRODUCTION_API_ORIGIN ? X3_MCP_GATEWAY_URL : `${origin}${ENDPOINTS.mcp}`;
+}
 const PROXY_HEADERS = {
   /** secret key with scope ingest:proxy for the project named by the body's `k` */
   key: "x-3x-proxy-key",
@@ -185,5 +191,8 @@ export {
   STORAGE_PARITY_THRESHOLDS,
   TIMING,
   VIDEO_COMPLETE_COVERAGE_PCT,
-  WIRE_VERSION
+  WIRE_VERSION,
+  X3_MCP_GATEWAY_URL,
+  X3_PRODUCTION_API_ORIGIN,
+  customerMcpUrl
 };
