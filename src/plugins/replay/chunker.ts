@@ -39,15 +39,20 @@ async function sha256(text: string): Promise<string> {
   return Array.from(new Uint8Array(buffer), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Replaces inline stylesheets the server already knows with {_x3css: sha} (65 % of a typical snapshot, §5.6) */
-export async function dedupeCss(events: Event[], known: Set<string>, ask: (hashes: string[]) => Promise<string[]>): Promise<void> {
+/**
+ * Replaces inline stylesheets the server already knows with {_x3css: sha} (65 % of a typical snapshot, §5.6).
+ * Returns the hashes sent inline: they count as known only once their packet was accepted – a lost packet
+ * (network, a final packet over 40 KB) must not leave later snapshots of the page pointing at a stylesheet
+ * the server never got (feedback G5: replays without CSS)
+ */
+export async function dedupeCss(events: Event[], known: Set<string>, ask: (hashes: string[]) => Promise<string[]>): Promise<string[]> {
   const nodes: Array<{ attributes: Record<string, unknown> }> = [];
   const walk = (node: { attributes?: Record<string, unknown>; childNodes?: unknown[] }) => {
     if (node.attributes && typeof node.attributes._cssText === "string") nodes.push(node as { attributes: Record<string, unknown> });
     for (const child of node.childNodes ?? []) walk(child as typeof node);
   };
   for (const event of events) if (event.type === 2 && event.data.node) walk(event.data.node as never);
-  if (nodes.length === 0) return;
+  if (nodes.length === 0) return [];
   const hashes = await Promise.all(nodes.map((node) => sha256(node.attributes._cssText as string)));
   const unknown = [...new Set(hashes.filter((hash) => !known.has(hash)))];
   const missing = new Set(unknown.length > 0 ? await ask(unknown).catch(() => unknown) : []);
@@ -56,9 +61,10 @@ export async function dedupeCss(events: Event[], known: Set<string>, ask: (hashe
     if (!missing.has(hash)) {
       delete node.attributes._cssText;
       node.attributes._x3css = hash;
+      known.add(hash);
     }
-    known.add(hash);
   });
+  return [...missing];
 }
 
 export type Chunker = {
@@ -101,9 +107,10 @@ export function createChunker(sender: Sender, options: { onOff: () => void; know
 
   const send = async (events: Event[], flags: number, keepalive: boolean) => {
     if (events.length === 0 && !(flags & X3R_FLAGS.revoke)) return;
+    let inline: string[] = [];
     if (events.some((event) => event.type === 2)) {
       flags |= X3R_FLAGS.full;
-      await dedupeCss(events, options.known, async (hashes) => {
+      inline = await dedupeCss(events, options.known, async (hashes) => {
         const response = await fetch(`${sender.host}/v1/r/css`, { method: "POST", body: JSON.stringify({ k: sender.key, hashes }), credentials: "omit", headers: { "content-type": "text/plain" } });
         return ((await response.json()) as { missing: string[] }).missing;
       });
@@ -115,6 +122,8 @@ export function createChunker(sender: Sender, options: { onOff: () => void; know
     const packet = encodeX3r({ ...sender.header(), k: sender.key, us: sender.secret, v: 1, seq: seq++, t0: events[0]?.timestamp ?? Date.now(), f: flags }, body);
     total += packet.byteLength;
     const answer = await post(packet, keepalive);
+    // the stylesheets sent inline are on the server now: later snapshots of this page load may refer to them
+    if (answer === "ok") for (const hash of inline) options.known.add(hash);
     if (answer === "off") {
       off = true;
       options.onOff();
